@@ -113,7 +113,7 @@ canTF, pSDBg_canny = sdb.canny(pSDBg, canny_name='pSDBg_canny.tif', output_dir=o
 if canTF:
     print(f'\nWrote: {pSDBg_canny}')
     
-sobelTF, pSDBg_sobel = sdb.sobel(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=output_dir, out_meta=out_meta)
+sobelTF, pSDBg_sobel, sobel_edges = sdb.sobel(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=output_dir, out_meta=out_meta)
 if sobelTF:
     print(f'\nWrote: {pSDBg_sobel}')
     
@@ -121,6 +121,9 @@ if sobelTF:
 stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.window_stdev(pSDBg, radius=7, stdev_name='pSDBg_stdevslope.tif', output_dir=output_dir, out_meta=out_meta)
 if stdevslopeTF:
     print(f'\nWrote: {pSDBg_stdevslope}')
+    
+# should probably change to write file in a function
+# rugosity worth continueing? 
     
 # %% - 
 
