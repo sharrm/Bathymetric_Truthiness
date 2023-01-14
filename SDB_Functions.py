@@ -157,6 +157,8 @@ def pSDBred (blue, red, rol_name, output_dir):
 
 # %% - surface roughness
 
+# in general, when writing a file use one to specify number of bands.
+
 def slope(pSDB_str, slope_name, output_dir):
     slope_output = os.path.join(output_dir, slope_name)
     gdal.DEMProcessing(slope_output, pSDB_str, 'slope') # writes directly to file
@@ -213,14 +215,22 @@ def sobel(pSDB, sobel_name, output_dir, out_meta):
     with rasterio.open(sobel_output, "w", **out_meta) as dest:
         dest.write(sobel_edges, 1)
     
-    return True, sobel_output
+    return True, sobel_output, sobel_edges
 
 # from: https://stackoverflow.com/questions/18419871/improving-code-efficiency-standard-deviation-on-sliding-windows
 def window_stdev(arr, radius, stdev_name, output_dir, out_meta):
+    # zeros = arr[arr == 0.0]
+    zeros = np.where(arr == 0.0)
+    # print('\nzeros', zeros, '\n')
+    # arr = np.pad(arr, radius, mode='constant', constant_values=0.0)
+    # arr = np.pad(arr, radius, mode='edge')
+    
     c1 = uniform_filter(arr, radius*2, mode='constant', origin=-radius)
     c2 = uniform_filter(arr*arr, radius*2, mode='constant', origin=-radius)
     
-    std = ((c2 - c1*c1)**.5)[:-radius*2+1,:-radius*2+1]
+    # std = ((c2 - c1*c1)**.5)[:-radius*2+1,:-radius*2+1]
+    std = ((c2 - c1*c1)**.5)[:-radius*2,:-radius*2]
+    # std[zeros] = 0.0
     
     stdev_output = os.path.join(output_dir, stdev_name)
 
@@ -229,6 +239,65 @@ def window_stdev(arr, radius, stdev_name, output_dir, out_meta):
         dest.write(std, 1)
     
     return True, stdev_output, std
+
+# %% - composite
+
+# in a multi-band raster, make band dimension first dimension in array, and use no band number when writing
+
+def composite(directory, output_name):
+    
+    output_dir = directory + '\_Composite'
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir) 
+    
+    output_composite = os.path.join(output_dir, output_name)
+    
+    dir_list = [file for file in os.listdir(directory) if file.endswith(".tif")]
+    
+    bands = []
+    
+    need_meta_trans = True
+    meta_transform = []
+    
+    for file in dir_list:
+        band = rasterio.open(os.path.join(directory, file))
+        
+        print(f'Merging {file} to composite')
+        
+        if need_meta_trans:
+            out_meta = band.meta
+            out_transform = band.transform  
+            meta_transform.append(out_meta)
+            meta_transform.append(out_transform)
+            need_meta_trans = False
+        
+        bands.append(band.read(1))        
+        band = None
+        
+    # remember to update count, and shift the np depth axis to the beginning
+    # method for creating composite
+    comp = np.dstack(bands)
+    comp = np.rollaxis(comp, axis=2)
+    
+    out_meta, out_transform = meta_transform
+    
+    out_meta.update({"driver": "GTiff",
+                      "height": comp.shape[1],
+                      "width": comp.shape[2],
+                      "count": comp.shape[0],
+                      # 'compress': 'lzw',
+                      "transform": out_transform})
+    
+    with rasterio.open(output_composite, "w", **out_meta) as dest:
+        dest.write(comp) # had to specify '1' here for some reason
+
+    dest = None
+        
+    return True, output_composite
+
+
+# %% -
 
 # def stdev_slope(pSDB, window_size, stdev_name, output_dir, out_meta):
 #     # window_size = window_size
@@ -274,12 +343,6 @@ def window_stdev(arr, radius, stdev_name, output_dir, out_meta):
     #         stdev = np.std(window)
     #         stdev_slope[i,j] = stdev
 
-# %% - composite
-
-
-
-
-# %% -
 
 # def read_band(band):
 #     with rasterio.open(masked_rasters['blue']) as src:

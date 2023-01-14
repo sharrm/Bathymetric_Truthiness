@@ -24,9 +24,14 @@ import os
 level1C = True
 # level1C = False
 
-maskSHP = r'P:\Thesis\Extents\Puerto_Real_Extents.shp'
-directory = r'P:\Thesis\Training\PuertoReal\_Predictors'
-output_dir = r'P:\Thesis\Training\PuertoReal\_Predictors\Bands'
+# maskSHP = r'P:\Thesis\Extents\Puerto_Real_Extents.shp'
+# directory = r'P:\Thesis\Training\PuertoReal\_Predictors'
+maskSHP = r"P:\Thesis\Extents\OldOrchard_Extents.shp"
+directory = r'P:\Thesis\Test Data\OldOrchard'
+output_dir = directory + '\_Bands'
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 # sort processed bands
 if level1C:
@@ -86,46 +91,65 @@ else:
 slopeTF, pSDBg_slope = sdb.slope(pSDBg_name, slope_name='pSDBg_slope.tif', output_dir=output_dir)
 if slopeTF:
     print(f'\nWrote: {pSDBg_slope}')
-
-# curvature RichDEM
-curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=output_dir, out_meta=out_meta)
-if curTF:
-    print(f'\nWrote: {pSDBg_curve}')
-
-# GDAL TRI
-triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri.tif', output_dir=output_dir)
-if triTF:
-    print(f'\nWrote: {pSDBg_tri}')
-    
-# GDAL TPI
-tpiTF, pSDBg_tpi = sdb.tpi(pSDBg_name, tpi_name='pSDBg_tpi.tif', output_dir=output_dir)
-if tpiTF:
-    print(f'\nWrote: {pSDBg_tpi}')
-    
-# GDAL Roughness
-roughTF, pSDBg_roughness = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=output_dir)
-if roughTF:
-    print(f'\nWrote: {pSDBg_roughness}')
-    
-# Skimage canny edge detection
-# cTF, blue_canny = sdb.canny(maskedBlue, canny_name='blue_canny.tif', output_dir=output_dir, out_meta=out_meta)
-canTF, pSDBg_canny = sdb.canny(pSDBg, canny_name='pSDBg_canny.tif', output_dir=output_dir, out_meta=out_meta)
-if canTF:
-    print(f'\nWrote: {pSDBg_canny}')
-    
-sobelTF, pSDBg_sobel, sobel_edges = sdb.sobel(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=output_dir, out_meta=out_meta)
-if sobelTF:
-    print(f'\nWrote: {pSDBg_sobel}')
+else:
+    print('\nCreating pSDBg slope failed...')
     
 # stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.stdev_slope(pSDBg, window_size=7, stdev_name='pSDBg_stdevslope.tif', output_dir=output_dir, out_meta=out_meta)
 stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.window_stdev(pSDBg, radius=7, stdev_name='pSDBg_stdevslope.tif', output_dir=output_dir, out_meta=out_meta)
 if stdevslopeTF:
     print(f'\nWrote: {pSDBg_stdevslope}')
+else:
+    print('\nCreating pSDBg stdev slope failed...')
+
+# curvature RichDEM
+curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=output_dir, out_meta=out_meta)
+if curTF:
+    print(f'\nWrote: {pSDBg_curve}')
+else:
+    print('\nCreating pSDBg curvature failed...')
+
+# # GDAL TRI
+# triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri.tif', output_dir=output_dir)
+# if triTF:
+#     print(f'\nWrote: {pSDBg_tri}')
+    
+# # GDAL TPI
+# tpiTF, pSDBg_tpi = sdb.tpi(pSDBg_name, tpi_name='pSDBg_tpi.tif', output_dir=output_dir)
+# if tpiTF:
+#     print(f'\nWrote: {pSDBg_tpi}')
+    
+# # GDAL Roughness
+# roughTF, pSDBg_roughness = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=output_dir)
+# if roughTF:
+#     print(f'\nWrote: {pSDBg_roughness}')
+    
+# # Skimage canny edge detection
+# # cTF, blue_canny = sdb.canny(maskedBlue, canny_name='blue_canny.tif', output_dir=output_dir, out_meta=out_meta)
+# canTF, pSDBg_canny = sdb.canny(pSDBg, canny_name='pSDBg_canny.tif', output_dir=output_dir, out_meta=out_meta)
+# if canTF:
+#     print(f'\nWrote: {pSDBg_canny}')
+    
+# sobelTF, pSDBg_sobel, sobel_edges = sdb.sobel(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=output_dir, out_meta=out_meta)
+# if sobelTF:
+#     print(f'\nWrote: {pSDBg_sobel}')
+    
+# test
+# stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.stdev_slope(pSDBg, window_size=5, stdev_name='pSDBg_stdevslope_2.tif', output_dir=output_dir, out_meta=out_meta)
     
 # should probably change to write file in a function
 # rugosity worth continueing? 
+
+print('\nBuilding compsite image...\n')
+
+compTF, composite = sdb.composite(output_dir, output_name='old_orchard_composite.tif')
+
+if compTF:
+    print(f'\nWrote: {pSDBg_curve}')
+else:
+    print('\nCreating pSDBg curvature failed...')
+
     
-# %% - 
+# %% -
 
 
 
