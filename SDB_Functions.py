@@ -12,7 +12,9 @@ import rasterio.mask
 import richdem as rd
 from osgeo import gdal
 from scipy.ndimage.filters import uniform_filter
-from skimage import feature, filters
+from scipy.ndimage import generic_filter
+from scipy.ndimage import sobel, prewitt
+# from skimage import feature, filters
 # from rasterio import plot
 # from rasterio.plot import show
 import fiona
@@ -73,87 +75,39 @@ def mask_imagery(red, green, blue, nir, in_shp, output_dir):
     return True, raster_list, out_meta
 
 
-def pSDBgreen (blue, green, rol_name, output_dir):
+def pSDBn (band1, band2, rol_name, output_dir):
 
     # read blue band
-    with rasterio.open(blue) as blue_src:
-        blue_image = blue_src.read(1)
+    with rasterio.open(band1) as band1_src:
+        band1_image = band1_src.read(1)
 
     # read green band
-    with rasterio.open(green) as green_src:
-        green_image = green_src.read(1)
-        out_meta = green_src.meta
+    with rasterio.open(band2) as band2_src:
+        band2_image = band2_src.read(1)
+        out_meta = band2_src.meta
 
-    # increase band values by factor of 1,000
-    ratioBlueArrayOutput = blue_image * 1000.0
-    ratioGreenArrayOutput = green_image * 1000.0
-
-    # calculate natural log of each band
-    lnBlueArrayOutput = np.log(ratioBlueArrayOutput)
-    lnGreenArrayOutput = np.log(ratioGreenArrayOutput)
-
-    # compute ratio between bands
-    ratioImage = lnBlueArrayOutput / lnGreenArrayOutput
+    # Stumpf et al algorithm (2003)
+    ratioArrayOutput = np.log(band1_image * 1000.0) / np.log(band2_image * 1000.0)
     
     # output raster filename with path
     outraster_name = os.path.join(output_dir, rol_name + '.tif')
     
     # writing information  
-    ratioImage[np.isnan(ratioImage)] = 0.0
-    ratioImage[np.isinf(ratioImage)] = 0.0
+    ratioArrayOutput[np.isnan(ratioArrayOutput)] = 0.0
+    ratioArrayOutput[np.isinf(ratioArrayOutput)] = 0.0
     out_meta.update({"dtype": 'float32', "nodata": 0.0})
     
     # write ratio between bands to a file
     with rasterio.open(outraster_name, "w", **out_meta) as dest:
-        dest.write(ratioImage, 1)
+        dest.write(ratioArrayOutput, 1)
 
     # close the file
     dest = None
 
     print(f"The ratio raster file is called: {outraster_name}")
 
-    return True, outraster_name, ratioImage, out_meta
+    return True, outraster_name, ratioArrayOutput, out_meta
 
-def pSDBred (blue, red, rol_name, output_dir):
-
-    # read blue band
-    with rasterio.open(blue) as blue_src:
-        blue_image = blue_src.read(1)
-
-    # read green band
-    with rasterio.open(red) as red_src:
-        red_image = red_src.read(1)
-        out_meta = red_src.meta
-
-    # increase band values by factor of 1,000
-    ratioBlueArrayOutput = blue_image * 1000.0
-    ratioRedArrayOutput = red_image * 1000.0
-
-    # calculate natural log of each band
-    lnBlueArrayOutput = np.log(ratioBlueArrayOutput)
-    lnRedArrayOutput = np.log(ratioRedArrayOutput)
-
-    # compute ratio between bands
-    ratioImage = lnBlueArrayOutput / lnRedArrayOutput
-    
-    # output raster filename with path
-    outraster_name = os.path.join(output_dir, rol_name + '.tif')
-    
-    # writing information  
-    ratioImage[np.isnan(ratioImage)] = 0.0
-    ratioImage[np.isinf(ratioImage)] = 0.0
-    out_meta.update({"dtype": 'float32', "nodata": 0.0})
-    
-    # write ratio between bands to a file
-    with rasterio.open(outraster_name, "w", **out_meta) as dest:
-        dest.write(ratioImage, 1)
-
-    # close the file
-    dest = None
-
-    print(f"The ratio raster file is called: {outraster_name}")
-
-    return True, outraster_name, ratioImage, out_meta
 
 # %% - surface roughness
 
@@ -165,11 +119,58 @@ def slope(pSDB_str, slope_name, output_dir):
     
     return True, slope_output
 
+def stdev(pSDB_str, window, stdev_name, output_dir, out_meta):
+    pSDB_slope = rasterio.open(pSDB_str).read(1)
+    pSDB_slope[pSDB_slope == -9999.] = 0. # be careful of no data values
+    
+    print(f'Computing standard deviation of slope within a {window} window...')
+    
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generic_filter.html
+    std = generic_filter(pSDB_slope, np.std, size=window)
+       
+    stdev_output = os.path.join(output_dir, stdev_name)
+    
+    with rasterio.open(stdev_output, "w", **out_meta) as dest:
+        dest.write(std, 1)
+    
+    pSDB_slope = None
+    dest = None
+    
+    return True, stdev_output
+    
+
+# from: https://stackoverflow.com/questions/18419871/improving-code-efficiency-standard-deviation-on-sliding-windows
+def window_stdev(pSDBg_slope, window, stdev_name, output_dir, out_meta):
+    pSDBg_slope = rasterio.open(pSDBg_slope).read(1)
+    pSDBg_slope[pSDBg_slope == -9999.] = 0.
+    
+    # recommendation; I simply set any nans to 0 below
+    # https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
+    # r,c = pSDBg_slope.shape
+    # pSDBg_slope+=np.random.rand(r,c)*1e-6
+    
+    c1 = uniform_filter(pSDBg_slope, window, mode='reflect')
+    c2 = uniform_filter(pSDBg_slope*pSDBg_slope, window, mode='reflect')
+    std = np.sqrt(c2 - c1*c1)
+    std[std == np.nan] = 0.
+    
+    stdev_output = os.path.join(output_dir, stdev_name)
+
+    # write stdev slope edges to file
+    with rasterio.open(stdev_output, "w", **out_meta) as dest:
+        dest.write(std, 1)
+    
+    return True, stdev_output
+
 # Zevenbergen, L.W., Thorne, C.R., 1987. Quantitative analysis of land surface topography. Earth surface processes and landforms 12, 47–56.
 def curvature(pSDB, curvature_name, output_dir, out_meta):
     curvature_output = os.path.join(output_dir, curvature_name)
+    
+    # sys.stdout = open(os.devnull, 'w')
     rda = rd.rdarray(pSDB, no_data=0.0)
     curve = rd.TerrainAttribute(rda, attrib='curvature')
+    # sys.stdout = sys.__stdout__
+    
     curve = np.array(curve)
     curve[curve == -9999] = 0.0
     
@@ -197,18 +198,18 @@ def roughness(pSDB_str, roughness_name, output_dir):
     
     return True, roughness_output
 
-def canny(pSDB, canny_name, output_dir, out_meta):
-    canny_edges = feature.canny(pSDB, sigma=1.0)
-    canny_output = os.path.join(output_dir, canny_name)
+# def canny(pSDB, canny_name, output_dir, out_meta):
+#     canny_edges = feature.canny(pSDB, sigma=1.0)
+#     canny_output = os.path.join(output_dir, canny_name)
     
-    # write canny edges to file
-    with rasterio.open(canny_output, "w", **out_meta) as dest:
-        dest.write(canny_edges, 1)
+#     # write canny edges to file
+#     with rasterio.open(canny_output, "w", **out_meta) as dest:
+#         dest.write(canny_edges, 1)
     
-    return True, canny_output
+#     return True, canny_output
 
-def sobel(pSDB, sobel_name, output_dir, out_meta):
-    sobel_edges = filters.sobel(pSDB)
+def sobel_filt(pSDB, sobel_name, output_dir, out_meta):
+    sobel_edges = sobel(pSDB)
     sobel_output = os.path.join(output_dir, sobel_name)
     
     # write sobel edges to file
@@ -217,43 +218,21 @@ def sobel(pSDB, sobel_name, output_dir, out_meta):
     
     return True, sobel_output, sobel_edges
 
-# from: https://stackoverflow.com/questions/18419871/improving-code-efficiency-standard-deviation-on-sliding-windows
-def window_stdev(arr, radius, stdev_name, output_dir, out_meta):
-    # zeros = arr[arr == 0.0]
-    zeros = np.where(arr == 0.0)
-    # print('\nzeros', zeros, '\n')
-    # arr = np.pad(arr, radius, mode='constant', constant_values=0.0)
-    # arr = np.pad(arr, radius, mode='edge')
+def prewitt_filt(pSDB, prewitt_name, output_dir, out_meta):
+    prewitt_edges = prewitt(pSDB)
+    prewitt_output = os.path.join(output_dir, prewitt_name)
     
-    c1 = uniform_filter(arr, radius*2, mode='constant', origin=-radius)
-    c2 = uniform_filter(arr*arr, radius*2, mode='constant', origin=-radius)
+    # write prewitt edges to file
+    with rasterio.open(prewitt_output, "w", **out_meta) as dest:
+        dest.write(prewitt_edges, 1)
     
-    # std = ((c2 - c1*c1)**.5)[:-radius*2+1,:-radius*2+1]
-    std = ((c2 - c1*c1)**.5)[:-radius*2,:-radius*2]
-    # std[zeros] = 0.0
-    
-    stdev_output = os.path.join(output_dir, stdev_name)
+    return True, prewitt_output, prewitt_edges
 
-    # write stdev slope edges to file
-    with rasterio.open(stdev_output, "w", **out_meta) as dest:
-        dest.write(std, 1)
-    
-    return True, stdev_output, std
 
 # %% - composite
 
 # in a multi-band raster, make band dimension first dimension in array, and use no band number when writing
-
-def composite(directory, output_name):
-    
-    output_dir = directory + '\_Composite'
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir) 
-    
-    output_composite = os.path.join(output_dir, output_name)
-    
-    dir_list = [file for file in os.listdir(directory) if file.endswith(".tif")]
+def composite(dir_list, output_composite):
     
     bands = []
     
@@ -261,7 +240,7 @@ def composite(directory, output_name):
     meta_transform = []
     
     for file in dir_list:
-        band = rasterio.open(os.path.join(directory, file))
+        band = rasterio.open(file)
         
         print(f'Merging {file} to composite')
         

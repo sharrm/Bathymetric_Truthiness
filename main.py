@@ -4,52 +4,75 @@
 
 # Identify user defined function files
 import SDB_Functions as sdb
-import os
+import os, sys
 # import linear_regression as slr
+
 
 # %% - inputs
 
-# Identify the input files
-# maskSHP = r"G:\My Drive\OSU Work\Geog 462 GIS III Analysis and Programing\Final Project\Other\clipper.shp" # in_shp
-# blueInput = r"G:\My Drive\OSU Work\Geog 462 GIS III Analysis and Programing\NewFinal\Sentinel2\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_492.tif" # Sentinel-2 band 
-# greenInput = r"G:\My Drive\OSU Work\Geog 462 GIS III Analysis and Programing\NewFinal\Sentinel2\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_560.tif" # Sentinel-2 band
-# redInput = r"G:\My Drive\OSU Work\Geog 462 GIS III Analysis and Programing\NewFinal\Sentinel2\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_665.tif" # Sentinel-2 band
-
-# maskSHP = r"C:\Users\sharrm\Box\CE 560 - Final Project\Test Data\KeyLargoSW\KeyLargoSW_Extents.shp" # in_shp
-# blueInput = r"P:\Thesis\Imagery\Key Largo\Processed\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_492.tif" # Sentinel-2 band
-# greenInput = r"P:\Thesis\Imagery\Key Largo\Processed\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_560.tif" # Sentinel-2 band
-# redInput = r"P:\Thesis\Imagery\Key Largo\Processed\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_665.tif" # Sentinel-2 band
-# nirInput = r"P:\Thesis\Imagery\Key Largo\Processed\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_833.tif"
-
 level1C = True
 # level1C = False
+create_rbg_composite = False
+# create_rbg_composite = True
 
-# maskSHP = r'P:\Thesis\Extents\Puerto_Real_Extents.shp'
-# directory = r'P:\Thesis\Training\PuertoReal\_Predictors'
-maskSHP = r"P:\Thesis\Extents\OldOrchard_Extents.shp"
-directory = r'P:\Thesis\Test Data\OldOrchard'
-output_dir = directory + '\_Bands'
+# maskSHP = r"P:\Thesis\Extents\Portland_Extents.shp"
+# directory = r'P:\Thesis\Test Data\Portland'
+# maskSHP = r"P:\Thesis\Extents\KeyLargoExtent.shp"
+# directory = r'P:\Thesis\Training\KeyLargo\_Train'
+# maskSHP = r'P:/Thesis/Extents/Puerto_Real_Extents.shp'
+# directory = r'P:\Thesis\Training\PuertoReal\_Train'
+# maskSHP = r"P:\Thesis\Extents\RockyHarbor_Extents.shp"
+# directory = r'P:\Thesis\Test Data\RockyHarbor'
+maskSHP = r"P:\Thesis\Extents\GreatLakes.shp"
+directory = r'P:\Thesis\Test Data\GreatLakes'
+predictor_dir = directory + '\_Bands_woutRGBNIR'
+composite_name = os.path.basename(directory) + '_composite.tif'
 
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+if not os.path.exists(predictor_dir):
+    os.makedirs(predictor_dir)
+
+
+# %% - band masking
+rgb = []
 
 # sort processed bands
 if level1C:
     for file in os.listdir(directory):
         if file.endswith('.tif') and 'rhos_492' in file:
+            print(f'Found blue band: {file}')
             blueInput =  os.path.join(directory, file)
+            rgb.append(blueInput)
         elif file.endswith('.tif') and 'rhos_560' in file or 'rhos_559' in file:
+            print(f'Found green band: {file}')
             greenInput =  os.path.join(directory, file )
+            rgb.append(greenInput)
         elif file.endswith('.tif') and 'rhos_665' in file:
+            print(f'Found red band: {file}')
             redInput =  os.path.join(directory, file)
+            rgb.append(redInput)
         elif file.endswith('.tif') and 'rhos_833' in file:
+            print(f'Found nir band: {file}')
             nirInput =  os.path.join(directory, file)
 else:
     pass
 
+
+# %% - RGB composite
+if create_rbg_composite:
+    if not os.path.exists(directory + '\_RGB'):
+        os.makedirs(directory + '\_RGB')
+    
+    rgb_compTF, rgb_composite = sdb.composite(rgb, os.path.join(directory + '\_RGB', 'rgb_composite.tif'))
+    
+    if rgb_compTF:
+        print(f'\nWrote: {rgb_composite}')
+    else:
+        print('\nCreating RGB composite failed...')
+
+
 # %% - band masking
 # returns of list of masked bands for each wavelength
-mTF, maskOutput, out_meta = sdb.mask_imagery(redInput, greenInput, blueInput, nirInput, maskSHP, output_dir)
+mTF, maskOutput, out_meta = sdb.mask_imagery(redInput, greenInput, blueInput, nirInput, maskSHP, predictor_dir)
 
 # display masked file output location for each wavelength
 if mTF:
@@ -66,82 +89,106 @@ if mTF:
 else:
     print("No masked files were returned from the file masking function.")
 
+
 # %% -- ratio of logs between bands / relative bathymetry
 
-# Start with Green SDB (deeper)
-gTF, outraster_name, pSDBg, out_meta = sdb.pSDBgreen(maskedBlue, maskedGreen, rol_name='pSDBg', output_dir=output_dir)
-
-# returns boolean and the pSDBg location
+# Green SDB (deeper)
+gTF, outraster_name, pSDBg, out_meta = sdb.pSDBn(maskedBlue, maskedGreen, rol_name='pSDBg', output_dir=predictor_dir)
 if gTF:
     pSDBg_name = outraster_name
 else:
     print("No green SDB raster dataset was returned from the pSDBgreen function.")
 
-rTF, outraster_name, pSDBr, out_meta = sdb.pSDBred(maskedBlue, maskedRed, rol_name='pSDBr', output_dir=output_dir)
-
-# returns boolean and the pSDBr location
+# Red SDB (shallower)
+rTF, outraster_name, pSDBr, out_meta = sdb.pSDBn(maskedBlue, maskedRed, rol_name='pSDBr', output_dir=predictor_dir)
 if rTF:
     pSDBr_name = outraster_name
 else:
     print("No green SDB raster dataset was returned from the pSDBgreen function.")
 
-# %% - surface roughness computation
+
+# %% - surface roughness predictors
 
 # GDAL sLope -- pSDBg_name is a string
-slopeTF, pSDBg_slope = sdb.slope(pSDBg_name, slope_name='pSDBg_slope.tif', output_dir=output_dir)
+slopeTF, pSDBg_slope = sdb.slope(pSDBg_name, slope_name='pSDBg_slope.tif', output_dir=predictor_dir)
 if slopeTF:
     print(f'\nWrote: {pSDBg_slope}')
 else:
     print('\nCreating pSDBg slope failed...')
-    
-# stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.stdev_slope(pSDBg, window_size=7, stdev_name='pSDBg_stdevslope.tif', output_dir=output_dir, out_meta=out_meta)
-stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.window_stdev(pSDBg, radius=7, stdev_name='pSDBg_stdevslope.tif', output_dir=output_dir, out_meta=out_meta)
-if stdevslopeTF:
+
+# https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
+window_stdevslopeTF, pSDBg_stdevslope = sdb.window_stdev(pSDBg_slope, window=7, stdev_name='pSDBg_stdevslope.tif', output_dir=predictor_dir, out_meta=out_meta)
+if window_stdevslopeTF:
     print(f'\nWrote: {pSDBg_stdevslope}')
 else:
     print('\nCreating pSDBg stdev slope failed...')
 
+# stdevslopeTF, pSDBg_stdevslope = sdb.stdev(pSDBg_slope, window=7, stdev_name='pSDBg_stdevslope.tif', output_dir=predictor_dir, out_meta=out_meta)
+# if stdevslopeTF:
+#     print(f'\nWrote: {pSDBg_stdevslope}')
+# else:
+#     print('\nCreating pSDBg stdev slope failed...')
+
 # curvature RichDEM
-curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=output_dir, out_meta=out_meta)
+# sys.stdout = open(os.devnull, 'w')
+curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=predictor_dir, out_meta=out_meta)
+# sys.stdout = sys.__stdout__
 if curTF:
     print(f'\nWrote: {pSDBg_curve}')
 else:
     print('\nCreating pSDBg curvature failed...')
 
 # # GDAL TRI
-# triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri.tif', output_dir=output_dir)
+# triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri.tif', output_dir=predictor_dir)
 # if triTF:
 #     print(f'\nWrote: {pSDBg_tri}')
     
 # # GDAL TPI
-# tpiTF, pSDBg_tpi = sdb.tpi(pSDBg_name, tpi_name='pSDBg_tpi.tif', output_dir=output_dir)
+# tpiTF, pSDBg_tpi = sdb.tpi(pSDBg_name, tpi_name='pSDBg_tpi.tif', output_dir=predictor_dir)
 # if tpiTF:
 #     print(f'\nWrote: {pSDBg_tpi}')
     
-# # GDAL Roughness
-# roughTF, pSDBg_roughness = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=output_dir)
-# if roughTF:
-#     print(f'\nWrote: {pSDBg_roughness}')
+# GDAL Roughness
+roughTF, pSDBg_roughness = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=predictor_dir)
+if roughTF:
+    print(f'\nWrote: {pSDBg_roughness}')
     
 # # Skimage canny edge detection
-# # cTF, blue_canny = sdb.canny(maskedBlue, canny_name='blue_canny.tif', output_dir=output_dir, out_meta=out_meta)
-# canTF, pSDBg_canny = sdb.canny(pSDBg, canny_name='pSDBg_canny.tif', output_dir=output_dir, out_meta=out_meta)
+# # cTF, blue_canny = sdb.canny(maskedBlue, canny_name='blue_canny.tif', output_dir=predictor_dir, out_meta=out_meta)
+# canTF, pSDBg_canny = sdb.canny(pSDBg, canny_name='pSDBg_canny.tif', output_dir=predictor_dir, out_meta=out_meta)
 # if canTF:
 #     print(f'\nWrote: {pSDBg_canny}')
     
-# sobelTF, pSDBg_sobel, sobel_edges = sdb.sobel(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=output_dir, out_meta=out_meta)
+# sobelTF, pSDBg_sobel, sobel_edges = sdb.sobel_filt(pSDBg, sobel_name='pSDBg_sobel.tif', output_dir=predictor_dir, out_meta=out_meta)
 # if sobelTF:
 #     print(f'\nWrote: {pSDBg_sobel}')
     
+# prewittTF, pSDBg_prewitt, prewitt_edges = sdb.prewitt_filt(pSDBg, prewitt_name='pSDBg_prewitt.tif', output_dir=predictor_dir, out_meta=out_meta)
+# if prewittTF:
+#     print(f'\nWrote: {pSDBg_prewitt}')
+    
 # test
-# stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.stdev_slope(pSDBg, window_size=5, stdev_name='pSDBg_stdevslope_2.tif', output_dir=output_dir, out_meta=out_meta)
+# stdevslopeTF, pSDBg_stdevslope, stdev_slope = sdb.stdev_slope(pSDBg, window_size=5, stdev_name='pSDBg_stdevslope_2.tif', output_dir=predictor_dir, out_meta=out_meta)
     
 # should probably change to write file in a function
 # rugosity worth continueing? 
 
+
+# %% - predictor composite
 print('\nBuilding compsite image...\n')
 
-compTF, composite = sdb.composite(output_dir, output_name='old_orchard_composite.tif')
+dir_list = [os.path.join(predictor_dir, file) for file in os.listdir(predictor_dir) if file.endswith(".tif") and 'masked' not in file]
+# dir_list = [os.path.join(predictor_dir, file) for file in os.listdir(predictor_dir) if file.endswith(".tif")]
+
+
+composite_dir = predictor_dir + '\_Composite'
+
+if not os.path.exists(composite_dir):
+    os.makedirs(composite_dir) 
+
+output_composite = os.path.join(composite_dir, composite_name)
+
+compTF, composite = sdb.composite(dir_list, output_composite)
 
 if compTF:
     print(f'\nWrote: {pSDBg_curve}')
