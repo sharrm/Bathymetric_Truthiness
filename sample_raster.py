@@ -5,8 +5,6 @@ Created on Tue Jan 10 11:45:26 2023
 @author: sharrm
 """
 
-#https://gis.stackexchange.com/questions/317391/python-extract-raster-values-at-point-locations
-
 import datetime
 import geopandas as gpd
 import matplotlib.patches as mpatches 
@@ -17,10 +15,9 @@ import pandas as pd
 import pickle
 import rasterio
 # from sklearn import metrics 
-from scipy.ndimage import median_filter as median
-from sklearn.preprocessing import LabelEncoder
+from scipy.ndimage import median_filter
+# from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-# from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 # from tensorflow import keras # in the future will need to figure out hdf5 
 # https://stackoverflow.com/questions/45411700/warning-hdf5-library-version-mismatched-error-python-pandas-windows
@@ -32,17 +29,17 @@ current_time = datetime.datetime.now()
 # scale = StandardScaler()
 scale = MinMaxScaler()
 
-# "w492nm",               #1
-# "w560nm",               #2   
-# "w665nm",               #3  
-# "w833nm",               #4
-
-feature_list = ["pSDBg",                #5
+feature_list = ["w492nm",               #1
+                "w560nm",               #2   
+                "w665nm",               #3  
+                "w833nm",               #4
+                "pSDBg",                #5
                 "pSDBg_curvature",      #6
                 "pSDBg_roughness",      #7  
                 "pSGBg_slope",          #8
                 "pSDBg_stdev_slope",    #9
-                "pSDBr"]                #10
+                "pSDBg_tri_Wilson",     #10
+                "pSDBr"]                #11
 
 labels = {0: 'U', 1: 'F', 2:'T'}
 
@@ -56,19 +53,23 @@ cmap = {0:[225/255, 245/255, 255/255, 1],
 # training ------------
 # train = True
 # predict = False
+# write_model = True
+write_model = False
 
 model_dir = r'P:\Thesis\Models' + '\\'
-model_name = model_dir + 'RF_model_KPP_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+model_name = model_dir + 'RF_model_woutRGBNIRr_nooutlier_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
 
 # prediction ------------
 train = False
 predict = True
 
 if predict:
-    # predict_raster = r"P:\Thesis\Test Data\OldOrchard\_Bands\_Composite\old_orchard_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_Bands_woutRGBNIR\_Composite\RockyHarbor_composite.tif"
-    predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_woutRGBNIR\_Composite\GreatLakes_composite.tif"
-    use_model = r"P:\Thesis\Models\RF_model_KPP_20230119_1247.pkl"
+    # predict_raster = r"P:\Thesis\Test Data\Portland\_Bands_11Band\_Composite\Portland_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_Bands_11Band\_Composite\RockyHarbor_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_11Band\_Composite\GreatLakes_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\NWHI\_Bands_11Band\_Composite\NWHI_composite.tif"
+    predict_raster = r"P:\Thesis\Test Data\FL Keys\_Bands_11Band\_Composite\FL Keys_composite.tif"
+    use_model = r"P:\Thesis\Models\RF_model_11Band_Mask_20230123_1422.pkl"
     
     write_prediction = True
     # write_prediction = False
@@ -79,7 +80,7 @@ if predict:
         if not os.path.exists(prediction_path):
             os.makedirs(prediction_path)
         
-        prediction_path = prediction_path + '\prediction_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
+        prediction_path = prediction_path + '\prediction_11Band_Mask_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
         
 
 # %% - training files
@@ -90,18 +91,20 @@ key_largo150_training = r"P:\Thesis\Training\KeyLargo\KeyLargo150.shp"
 puerto_real_training = r"P:\Thesis\Training\PuertoReal\_Test\Forest2.shp"
 portland_training = r"P:/Thesis/Samples/Portland300.shp"
 
-shapefiles = [key_largo100_training, key_largo150_training, 
-              puerto_real_training, portland_training] # list of shapefiles
+shapefiles = [key_largo100_training, key_largo150_training] # list of shapefiles
 
 # raster
 # key_largo_raster = r"P:\Thesis\Training\KeyLargo\_Train\_Bands\_Composite\key_largo_composite.tif"
 # puerto_real_raster = r"P:\Thesis\Training\PuertoReal\_Train\_Bands\_Composite\puerto_real_composite.tif"
 # portland_raster = r"P:\Thesis\Training\Portland\_Bands\_Composite\portland_composite.tif"
-key_largo_raster = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_woutRGBNIR\_Composite\KeyLargo_composite.tif"
-puerto_real_raster = r"P:\Thesis\Training\PuertoReal\_Train\_Bands_woutRGBNIR\_Composite\PuertoReal_composite.tif"
-portland_raster = r"P:\Thesis\Training\Portland\_Bands_woutRGBNIR\_Composite\Portland_composite.tif"
+# key_largo_raster = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_11Band\_Composite\KeyLargo_composite.tif"
+# puerto_real_raster = r"P:\Thesis\Training\PuertoReal\_Train\_Bands_11Band\_Composite\PuertoReal_composite.tif"
+# # portland_raster = r"P:\Thesis\Training\Portland\_Bands_11Band\_Composite\Portland_composite.tif"
+# key_largo_raster = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_woutRGBNIR\_Composite\KeyLargo_composite.tif"
+# puerto_real_raster = r"P:\Thesis\Training\PuertoReal\_Train\_Bands_woutRGBNIR\_Composite\PuertoReal_composite.tif"
+key_largo_raster = r'P:/Thesis/Training/KeyLargo/_Train/_Bands_woutRGBNIRr/_Composite/_Train_composite.tif'
 
-rasters = [key_largo_raster, puerto_real_raster, portland_raster]
+rasters = [key_largo_raster]
 
 
 # %% - functions
@@ -147,10 +150,11 @@ def get_raster_values(src, shp):
         pts.index = range(len(pts))
         coords = [(x,y) for x, y in zip(pts.Easting_m, pts.Northing_m)]
         
+        # https://gis.stackexchange.com/questions/317391/python-extract-raster-values-at-point-locations
         pts['sample'] = [x for x in src.sample(coords)]
         sample_values = pd.DataFrame(pts['sample'].to_list(), columns=feature_list).to_numpy()
-        sample_values[(sample_values < np.mean(sample_values) - 3 * np.std(sample_values)) | 
-                    (sample_values > np.mean(sample_values) + 3 * np.std(sample_values))] = 0
+        # sample_values[(sample_values < np.mean(sample_values) - 3 * np.std(sample_values)) | 
+        #             (sample_values > np.mean(sample_values) + 3 * np.std(sample_values))] = 0
         
         X_train.append(scale.fit_transform(sample_values))
 
@@ -164,11 +168,11 @@ def get_raster_values(src, shp):
 
 def correlation_matrix(correlation):
     plt.matshow(correlation, cmap='cividis') # viridis cividis
-    plt.xticks(range(df.select_dtypes(['number']).shape[1]), df.select_dtypes(['number']).columns, fontsize=8, rotation=45)
+    plt.xticks(range(df.select_dtypes(['number']).shape[1]), df.select_dtypes(['number']).columns, fontsize=8, rotation=-80)
     plt.yticks(range(df.select_dtypes(['number']).shape[1]), df.select_dtypes(['number']).columns, fontsize=8, rotation=30)
     cb = plt.colorbar()
     cb.ax.tick_params(labelsize=14)
-    plt.title('Correlation Matrix', fontsize=16);
+    plt.title('Correlation Matrix', fontsize=12);
     plt.show()
     
 def plotImage(image,labels,cmap):
@@ -218,7 +222,8 @@ if train:
     # train random forest model
     model = RandomForestClassifier(n_estimators = 100, random_state = 42)  # originally 100 and 42
     model.fit(X_train, Y_train)
-    pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
+    if write_model:
+        pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
     
     print(f'Saved random forest model: {model_name}\n')
 
@@ -235,6 +240,10 @@ elif predict:
     predictors = rasterio.open(predict_raster)
     out_meta = predictors.meta
     predictors = predictors.read().transpose(1,2,0)
+    for i in range(predictors.shape[2]):
+        predictors[predictors[:,:,i] == -9999.] = 0.
+        predictors[predictors[:,:,i] == np.nan] = 0.
+        
     mask = predictors[:,:,0]
     
     print('Read raster to predict...')
@@ -246,16 +255,22 @@ elif predict:
     rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
     X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
     
-    # X_new[X_new == -9999.] = -1
     X_new[(X_new < np.mean(X_new) - 3 * np.std(X_new)) | 
                 (X_new > np.mean(X_new) + 3 * np.std(X_new))] = 0
     X_new = scale.fit_transform(X_new)
     X_new = np.nan_to_num(X_new)
     
+    print('Predicting...')
+    
     im_predicted = np.zeros((mask.shape))
     predicted = model.predict(X_new)
-    prediction = np.where(predicted == 'T', 1, 0)
-    im_predicted[rc[:,0],rc[:,1]] = prediction + 1
+    im_predicted[rc[:,0],rc[:,1]] = predicted
+    # prediction = np.where(predicted == 'T', 1, 0)
+    # im_predicted[rc[:,0],rc[:,1]] = prediction + 1
+    
+    print('Median filter...')
+    
+    im_predicted = median_filter(im_predicted, size=11, mode='reflect')
     
     print('Plotting...')
     
@@ -268,7 +283,6 @@ elif predict:
                           "count": 1})
         
         with rasterio.open(prediction_path, "w", **out_meta) as dest:
-            # dest.write(median(im_predicted, size=11), 1) 
             dest.write(im_predicted, 1)
         
         predictors = None
