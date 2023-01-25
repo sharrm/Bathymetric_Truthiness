@@ -13,6 +13,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+from pytictoc import TicToc 
 import rasterio
 # from sklearn import metrics 
 from scipy.ndimage import median_filter
@@ -22,11 +23,10 @@ from sklearn.preprocessing import MinMaxScaler
 # from tensorflow import keras # in the future will need to figure out hdf5 
 # https://stackoverflow.com/questions/45411700/warning-hdf5-library-version-mismatched-error-python-pandas-windows
 
+tt = TicToc()
 # %% - globals
 
 current_time = datetime.datetime.now()
-
-# scale = StandardScaler()
 scale = MinMaxScaler()
 
 feature_list = ["w492nm",               #1
@@ -68,11 +68,13 @@ if predict:
     # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_Bands_11Band\_Composite\RockyHarbor_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_11Band\_Composite\GreatLakes_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\NWHI\_Bands_11Band\_Composite\NWHI_composite.tif"
-    predict_raster = r"P:\Thesis\Test Data\FL Keys\_Bands_11Band\_Composite\FL Keys_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\FL Keys\_Bands_11Band\_Composite\FL Keys_composite.tif"
+    predict_raster = r"P:\Thesis\Test Data\HalfMoon\_Bands_11Band\_Composite\HalfMoon_composite.tif"
+    # predict_raster = r
     use_model = r"P:\Thesis\Models\RF_model_11Band_Mask_20230123_1422.pkl"
     
-    write_prediction = True
-    # write_prediction = False
+    # write_prediction = True
+    write_prediction = False
     
     if write_prediction:
         prediction_path = os.path.abspath(os.path.join(os.path.dirname(predict_raster), '..', '_Prediction'))
@@ -235,15 +237,83 @@ if train:
     correlation = df.corr()
     correlation_matrix(correlation)
 
-elif predict:
-    # predict using existing model
-    predictors = rasterio.open(predict_raster)
-    out_meta = predictors.meta
-    predictors = predictors.read().transpose(1,2,0)
-    for i in range(predictors.shape[2]):
-        predictors[predictors[:,:,i] == -9999.] = 0.
-        predictors[predictors[:,:,i] == np.nan] = 0.
+# elif predict:
+#     # predict using existing model
+#     predictors = rasterio.open(predict_raster)
+#     out_meta = predictors.meta
+#     predictors = predictors.read().transpose(1,2,0)
+#     for i in range(predictors.shape[2]):
+#         predictors[predictors[:,:,i] == -9999.] = 0.
+#         predictors[predictors[:,:,i] == np.nan] = 0.
         
+#     mask = predictors[:,:,0]
+    
+#     print('Read raster to predict...')
+    
+#     model = pickle.load(open(use_model, 'rb'))
+    
+#     print(f'Loaded model: {use_model}')
+    
+#     rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
+#     X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
+    
+#     X_new[(X_new < np.mean(X_new) - 3 * np.std(X_new)) | 
+#                 (X_new > np.mean(X_new) + 3 * np.std(X_new))] = 0
+#     X_new = scale.fit_transform(X_new)
+#     X_new = np.nan_to_num(X_new)
+    
+#     print('Predicting...')
+    
+#     im_predicted = np.zeros((mask.shape))
+#     predicted = model.predict(X_new)
+#     im_predicted[rc[:,0],rc[:,1]] = predicted
+#     # prediction = np.where(predicted == 'T', 1, 0)
+#     # im_predicted[rc[:,0],rc[:,1]] = prediction + 1
+    
+#     print('Median filter...')
+    
+#     im_predicted = median_filter(im_predicted, size=11, mode='reflect')
+    
+#     print('Plotting...')
+    
+#     plotImage(colorMap(im_predicted),labels,cmap)  
+    
+#     if write_prediction:
+#         out_meta.update({"driver": "GTiff",
+#                           "height": predictors.shape[0],
+#                           "width": predictors.shape[1],
+#                           "count": 1})
+        
+#         with rasterio.open(prediction_path, "w", **out_meta) as dest:
+#             dest.write(im_predicted, 1)
+        
+#         predictors = None
+#         dest = None
+            
+#         print(f'Saved prediction raster: {prediction_path}')
+    
+elif predict:
+    #-- Every cell location in a raster has a value assigned to it. 
+    #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
+    upper_limit = np.finfo(np.float32).max/10
+    lower_limit = np.finfo(np.float32).min/10
+    
+    features_list = []
+    pr = rasterio.open(predict_raster)
+    out_meta = pr.meta
+    pr = pr.read().transpose(1,2,0)
+    
+    for i, __ in enumerate(feature_list):
+        ft = pr[:,:,i]
+        ft[ft == -9999.] = 0.
+        ft[ft == np.nan] = 0.
+        ft[(ft < lower_limit) | (ft > upper_limit)] = 0.
+        ft[(ft < np.mean(ft) - 3 * np.std(ft)) | (ft > np.mean(ft) + 3 * np.std(ft))] = 0. # set anything 3 std from mean to 0
+        # features_list.append(scale.fit_transform(ft))
+        features_list.append(ft)
+    
+    features_arr = np.array(features_list)
+    predictors = np.moveaxis(features_arr,0,-1) # np.ndstack is slow  
     mask = predictors[:,:,0]
     
     print('Read raster to predict...')
@@ -254,23 +324,17 @@ elif predict:
     
     rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
     X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
-    
-    X_new[(X_new < np.mean(X_new) - 3 * np.std(X_new)) | 
-                (X_new > np.mean(X_new) + 3 * np.std(X_new))] = 0
-    X_new = scale.fit_transform(X_new)
     X_new = np.nan_to_num(X_new)
-    
     print('Predicting...')
-    
     im_predicted = np.zeros((mask.shape))
     predicted = model.predict(X_new)
     im_predicted[rc[:,0],rc[:,1]] = predicted
     # prediction = np.where(predicted == 'T', 1, 0)
     # im_predicted[rc[:,0],rc[:,1]] = prediction + 1
     
-    print('Median filter...')
+    # print('Median filter...')
     
-    im_predicted = median_filter(im_predicted, size=11, mode='reflect')
+    # im_predicted = median_filter(im_predicted, size=11, mode='reflect')
     
     print('Plotting...')
     
@@ -289,5 +353,7 @@ elif predict:
         dest = None
             
         print(f'Saved prediction raster: {prediction_path}')
-    
-    
+
+tt.toc()
+
+# print("--- Total elapsed time: %.3f seconds ---" % (time.time() - start_time))
