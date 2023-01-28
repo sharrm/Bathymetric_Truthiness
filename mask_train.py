@@ -14,20 +14,39 @@ import pandas as pd
 import pickle
 import rasterio
 from pytictoc import TicToc
-from scipy.ndimage import median_filter
+# from scipy.ndimage import median_filter
 from sklearn import metrics 
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import MinMaxScaler
+# from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+# from sklearn.preprocessing import LabelEncoder
+# from sklearn.preprocessing import MinMaxScaler
+from sklearn.svm import SVC
+
+# from sklearn.model_selection import train_test_split
+# from sklearn.preprocessing import StandardScaler
+# from sklearn.pipeline import make_pipeline
+# from sklearn.datasets import make_moons, make_circles, make_classification
+from sklearn.neural_network import MLPClassifier
+from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.svm import SVC
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+# from sklearn.inspection import DecisionBoundaryDisplay
 
 t = TicToc()
 t.tic()
 
+np.random.seed(0)
 
 # %% - globals
 
 current_time = datetime.datetime.now()
-scale = MinMaxScaler()
+log_file = r'C:\_Thesis\_Monday\_Log\log_' + current_time.strftime('%Y%m%d_%H%M') + '.txt'
+# scale = MinMaxScaler()
 
 #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
 upper_limit = np.finfo(np.float32).max/10
@@ -54,17 +73,75 @@ cmap = {0:[225/255, 245/255, 255/255, 1],
 
 # %% - case
 
-# training ------------
 # train = True
-# predict = False
-# write_model = True
-model_dir = r'P:\Thesis\Models'
-model_name = model_dir + '\RF_model_11Band_2Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
-write_model = False
-
-# prediction ------------
+predict = False
 train = False
-predict = True
+# predict = True
+
+# flkeys_composite = r"P:\Thesis\Training\FLKeys\_Bands_11Band\_Composite\FLKeys_composite.tif"
+# keylargo_composite = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_11Band\_Composite\KeyLargo_composite.tif"
+# flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
+# keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
+
+# composite_rasters = [keylargo_composite, flkeys_composite]
+# training_rasters = [keylargo_training_mask, flkeys_training_mask]
+
+composite_rasters = [
+                    r"C:\_Thesis\_Monday\X_train\FLKeys_F_Deep_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\FLKeys_F_Turbid_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\FLKeys_T_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Deep_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Turbid_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\Halfmoon_T_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\KeyLargo_F_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\KeyLargo_TF_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\NWHI_F_Deep_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\NWHI_T_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Clean_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Noise_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\PR_F_Turbid_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\PR_TF_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\StCroix_F_Deep_composite.tif",
+                    r"C:\_Thesis\_Monday\X_train\StCroix_T_composite.tif"
+                    ]
+
+training_rasters = [
+                    r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Deep_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Turbid_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\FLKeys_T_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Deep_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Turbid_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_T_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\KeyLargo_F_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\KeyLargo_TF_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\NWHI_F_Deep_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\NWHI_T_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Clean_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Noise_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\PR_F_Turbid_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\PR_TF_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\StCroix_F_Deep_truthiness.tif",
+                    r"C:\_Thesis\_Monday\Y_train\StCroix_T_truthiness.tif"
+                    ]
+
+# training ------------
+prepare = True
+# prepare = False
+# n_models = True
+n_models = False
+# RF = True
+RF = False
+# SVM = True
+SVM = False
+# write_model = True
+write_model = False
+model_dir = r'P:\Thesis\Models'
+model_name = model_dir + '\SVM_model_11Band_2Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+
+# add logging
+
+
+# %% prediction ------------
 
 if predict:
     # predict_raster = r"P:\Thesis\Test Data\Portland\_Bands_11Band\_Composite\Portland_composite.tif"
@@ -75,12 +152,13 @@ if predict:
     # predict_raster = r"P:\Thesis\Test Data\HalfMoon\_Bands_11Band\_Composite\HalfMoon_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_Bands_11Band\_Composite\PuertoReal_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\WakeIsland\_Bands_11Band\_Composite\WakeIsland_composite.tif"
-    predict_raster = r"P:\Thesis\Test Data\StCroix\_Bands_11Band\_Composite\StCroix_composite.tif"
-    # use_model = r"P:\Thesis\Models\RF_model_11Band_Mask_20230123_1422.pkl"
-    use_model = r"P:\Thesis\Models\RF_model_11Band_2Masks_20230125_1318.pkl"
+    # predict_raster = r"P:\Thesis\Test Data\StCroix\_Bands_11Band\_Composite\StCroix_composite.tif"
+    predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_11Band\_Composite\GreatLakes_composite.tif"
+    use_model = r"P:\Thesis\Models\SVM_model_11Band_2Masks_20230127_1136.pkl"
+    # use_model = r"P:\Thesis\Models\RF_model_11Band_2Masks_20230125_1318.pkl"
     
-    write_prediction = True
-    # write_prediction = False
+    # write_prediction = True
+    write_prediction = False
     
     if write_prediction:
         prediction_path = os.path.abspath(os.path.join(os.path.dirname(predict_raster), '..', '_Prediction'))
@@ -89,15 +167,6 @@ if predict:
             os.makedirs(prediction_path)
         
         prediction_path = prediction_path + '\prediction_11Band_Mask_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
-
-# %% - training inputs
-flkeys_composite = r"P:\Thesis\Training\FLKeys\_Bands_11Band\_Composite\FLKeys_composite.tif"
-keylargo_composite = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_11Band\_Composite\KeyLargo_composite.tif"
-flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
-keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
-
-composite_rasters = [keylargo_composite, flkeys_composite]
-training_rasters = [keylargo_training_mask, flkeys_training_mask]
 
 
 # %% - functions
@@ -135,11 +204,14 @@ def scaleData(data):
 
 
 # %% - prepare training data
-if train:
+if prepare:
     all_predictors = []
+    
+    # add check for extents matching
     
     for tif in composite_rasters:
         bands = rasterio.open(tif).read().transpose((1,2,0))
+        # print(f'{os.path.basename(tif)} shape: {bands.shape}')
         
         predictors_list = []
         
@@ -158,33 +230,73 @@ if train:
         # rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
         # X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
         # X_new = np.nan_to_num(X_new)
-        print(f'Added {tif} to training data set.')
+        print(f'Added {tif} to X_train training data set.')
+        
+        f = open(log_file, 'a')
+        f.write(f'\nAdded {tif} to X_train training data set.')
+        f.close()
         
         bands = None
     
     all_truthiness = []
     
+    print('\n')
+    
     for tif in training_rasters:
         bands = rasterio.open(tif).read().transpose((1,2,0))
+        # print(f'{os.path.basename(tif)} shape: {bands.shape}')
         tf = bands.ravel()
         all_truthiness.append(tf)
-        print(f'Added {tif} to truthiness training data set.')
+        print(f'Added {tif} to Y_train truthiness training data set.')
+        
+        f = open(log_file, 'a')
+        f.write(f'\nAdded {tif} to Y_train truthiness training data set.')
+        f.close()
         
         bands = None
         
-    X_train = np.vstack(all_predictors)
-    Y_train = np.concatenate(all_truthiness)
+    x_train = np.vstack(all_predictors)
+    y_train = np.concatenate(all_truthiness)
     
     # https://gis.stackexchange.com/questions/151339/rasterize-a-shapefile-with-geopandas-or-fiona-python
     
-    print('\nPrepared training data.')
+    print('\nSplitting data into training and testing...')
+    # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
 
+    X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
+    print('\nPrepared training data...')
+    
+    print(f'\nX_train size: {X_train.size}\nY_train size: {Y_train.size}\nX_test size: {X_test.size}\nY_test size: {Y_test.size}')
+    print(f'\nX_train shape: {X_train.shape}\nY_train shape: {Y_train.shape}\nX_test shape: {X_test.shape}\nY_test shape: {Y_test.shape}')
+    
+    row_check = (X_train.shape[0] + X_test.shape[0]) - (Y_train.shape[0] + Y_test.shape[0])
+    
+    if row_check != 0:
+        print('X and Y training/test row number mismatch. Stopping...')
+        
+        f = open(log_file, 'a')
+        f.write('\n\nX and Y training/test row number mismatch. Stopping...')
+        f.close()
+    else:
+        print(f'\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}')
+        print(f'Y_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}')
+        print('Verified number of rows in training data correct.')
+        
+        f = open(log_file, 'a')
+        f.write(f'\n\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}')
+        f.write(f'\nY_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}')
+        f.write('\nVerified number of rows in training data correct.')
+        f.close()
+        
 
 # %% - train/predict
 
-if train:
+# https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html
+
+if train and RF:
     # train random forest model
     print('Training model...')
+    # https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
     model = RandomForestClassifier(n_estimators = 100, random_state = 42)     
     model.fit(X_train, Y_train)
     
@@ -198,6 +310,78 @@ if train:
     df = pd.DataFrame(X_train, columns=feature_list)
     correlation = df.corr()
     correlation_matrix(correlation)
+elif train and SVM:
+    # train SVM model
+    print('Splitting data into training and testing...')
+    # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
+    X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size=0.2, random_state=42)
+    print('Training model...')
+    # https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
+    model = SVC(gamma='auto')
+    model.fit(X_train, Y_train)
+    
+    # add in accuracy accessment from metrics
+    #-- accuracy assessment 
+    acc1 = metrics.accuracy_score(Y_test, model.predict(X_test))*100.0
+    print ("\n-RF Validation Accuracy= %.3f %%" % acc1) 
+    
+    #-- some sklearn classifiers provide the class probabilities for each data 
+    # probability = model.predict_proba(X_test)
+    
+    # add yellowbrick ROCAUC
+    
+    if write_model:
+        pickle.dump(model, open(model_name, 'wb')) # save the trained SVM model
+        print(f'Saved svm model: {model_name}\n')
+elif train and n_models:
+
+    names = [
+        "Linear SVM",
+        "RBF SVM",
+        "Gaussian Process",
+        "Decision Tree",
+        "Random Forest",
+        "Neural Net",
+        "AdaBoost",
+        "Naive Bayes",
+        "QDA",
+        "Nearest Neighbors"
+    ]
+
+    classifiers = [
+        SVC(kernel="linear", C=0.025),
+        SVC(gamma='auto', C=1),
+        GaussianProcessClassifier(1.0 * RBF(1.0)),
+        DecisionTreeClassifier(max_depth=5),
+        RandomForestClassifier(n_estimators=100),
+        MLPClassifier(alpha=1, max_iter=1000),
+        AdaBoostClassifier(),
+        GaussianNB(),
+        QuadraticDiscriminantAnalysis(),
+        KNeighborsClassifier(3)
+    ]
+    
+    print(f'\nTraining with the following models:\n{names}')
+    
+    for name, clf in zip(names, classifiers):
+        print(f'\nTraining {name} model...')
+      
+        clf.fit(X_train, Y_train)
+        
+        model_name = model_dir + '\\' + name + '_model_11Band_2Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+        
+        #-- accuracy assessment 
+        acc1 = metrics.accuracy_score(Y_test, model.predict(X_test))*100.0
+        print (f'\n--{name} Validation Accuracy= {acc1}') 
+        f = open(log_file, 'a')
+        f.write(f'\nTraining with the following models:\n{names}')
+        f.write(f'\nTraining {name} model...')
+        f.write(f'\n--{name} Validation Accuracy= {acc1}')
+        f.close()
+        
+        if write_model:
+            pickle.dump(model, open(model_name, 'wb')) # save the trained model
+            print(f'--Saved {name} model: {model_name}\n')     
 elif predict:
     #-- Every cell location in a raster has a value assigned to it. 
     #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
