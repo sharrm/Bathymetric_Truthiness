@@ -15,37 +15,41 @@ import pickle
 import rasterio
 from pytictoc import TicToc
 # from scipy.ndimage import median_filter
-from sklearn import metrics 
-# from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import precision_recall_fscore_support, confusion_matrix, f1_score, precision_score, recall_score, accuracy_score, ConfusionMatrixDisplay
+from sklearn.model_selection import cross_val_score
+from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
-# from sklearn.preprocessing import LabelEncoder
-# from sklearn.preprocessing import MinMaxScaler
-from sklearn.svm import SVC
+import time
+from yellowbrick.classifier import ROCAUC
 
 # from sklearn.model_selection import train_test_split
 # from sklearn.preprocessing import StandardScaler
 # from sklearn.pipeline import make_pipeline
 # from sklearn.datasets import make_moons, make_circles, make_classification
-from sklearn.neural_network import MLPClassifier
-from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.neural_network import MLPClassifier
+# from sklearn.neighbors import KNeighborsClassifier
 # from sklearn.svm import SVC
-from sklearn.gaussian_process import GaussianProcessClassifier
-from sklearn.gaussian_process.kernels import RBF
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+# from sklearn.gaussian_process import GaussianProcessClassifier
+# from sklearn.gaussian_process.kernels import RBF
+# from sklearn.tree import DecisionTreeClassifier
+# from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier
+# from sklearn.naive_bayes import GaussianNB
+# from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 # from sklearn.inspection import DecisionBoundaryDisplay
+# from sklearn.preprocessing import LabelEncoder
+# from sklearn.preprocessing import MinMaxScaler
+# from sklearn.svm import SVC
 
 t = TicToc()
 t.tic()
 
-np.random.seed(0)
+np.random.seed(42)
 
 # %% - globals
 
 current_time = datetime.datetime.now()
-log_file = r'C:\_Thesis\_Monday\_Log\log_' + current_time.strftime('%Y%m%d_%H%M') + '.txt'
+log_file = r"P:\Thesis\Test Data\_Logs\Log_" + current_time.strftime('%Y%m%d_%H%M') + '.txt'
 # scale = MinMaxScaler()
 
 #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
@@ -57,14 +61,14 @@ feature_list = ["w492nm",               #1
                 "w665nm",               #3  
                 "w833nm",               #4
                 "pSDBg",                #5
-                "pSDBg_curvature",      #6
+                # "pSDBg_curvature",      #6
                 "pSDBg_roughness",      #7  
-                "pSGBg_slope",          #8
+                # "pSGBg_slope",          #8
                 "pSDBg_stdev_slope",    #9
-                "pSDBg_tri_Wilson",     #10
+                # "pSDBg_tri_Wilson",     #10
                 "pSDBr"]                #11
 
-labels = {0: 'U', 1: 'F', 2:'T'}
+labels = {0: 'No Data', 1: 'False', 2:'True'}
 
 cmap = {0:[225/255, 245/255, 255/255, 1],
         1:[225/255, 175/255, 0/255, 1],
@@ -73,9 +77,9 @@ cmap = {0:[225/255, 245/255, 255/255, 1],
 
 # %% - case
 
-# train = True
+train = True
 predict = False
-train = False
+# train = False
 # predict = True
 
 # flkeys_composite = r"P:\Thesis\Training\FLKeys\_Bands_11Band\_Composite\FLKeys_composite.tif"
@@ -83,60 +87,71 @@ train = False
 # flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
 # keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
 
-# composite_rasters = [keylargo_composite, flkeys_composite]
-# training_rasters = [keylargo_training_mask, flkeys_training_mask]
+# 8 band
+flkeys_composite = r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif"
+keylargo_composite = r"P:\Thesis\Training\KeyLargo\_8Band\_Composite\KeyLargoExtent_composite.tif"
+stcroix_composite = r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif"
 
-composite_rasters = [
-                    r"C:\_Thesis\_Monday\X_train\FLKeys_F_Deep_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\FLKeys_F_Turbid_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\FLKeys_T_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Deep_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Turbid_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\Halfmoon_T_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\KeyLargo_F_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\KeyLargo_TF_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\NWHI_F_Deep_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\NWHI_T_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Clean_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Noise_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\PR_F_Turbid_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\PR_TF_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\StCroix_F_Deep_composite.tif",
-                    r"C:\_Thesis\_Monday\X_train\StCroix_T_composite.tif"
-                    ]
+flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
+keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
+stcroix_training_mask = r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif"
 
-training_rasters = [
-                    r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Deep_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Turbid_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\FLKeys_T_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Deep_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Turbid_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\Halfmoon_T_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\KeyLargo_F_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\KeyLargo_TF_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\NWHI_F_Deep_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\NWHI_T_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Clean_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Noise_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\PR_F_Turbid_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\PR_TF_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\StCroix_F_Deep_truthiness.tif",
-                    r"C:\_Thesis\_Monday\Y_train\StCroix_T_truthiness.tif"
-                    ]
+composite_rasters = [keylargo_composite, flkeys_composite, stcroix_composite]
+training_rasters = [keylargo_training_mask, flkeys_training_mask, stcroix_training_mask ]
+
+# composite_rasters = [
+#                     r"C:\_Thesis\_Monday\X_train\FLKeys_F_Deep_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\FLKeys_F_Turbid_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\FLKeys_T_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Deep_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Turbid_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\Halfmoon_T_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\KeyLargo_F_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\KeyLargo_TF_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\NWHI_F_Deep_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\NWHI_T_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Clean_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Noise_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\PR_F_Turbid_composite.tif",
+#                     # r"C:\_Thesis\_Monday\X_train\PR_TF_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\StCroix_F_Deep_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\StCroix_T_composite.tif"
+#                     ]
+
+# training_rasters = [
+                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Deep_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Turbid_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_T_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Deep_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Turbid_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_T_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\KeyLargo_F_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\KeyLargo_TF_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\NWHI_F_Deep_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\NWHI_T_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Clean_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Noise_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Turbid_truthiness.tif",
+                    # # r"C:\_Thesis\_Monday\Y_train\PR_TF_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\StCroix_F_Deep_truthiness.tif",
+                    # r"C:\_Thesis\_Monday\Y_train\StCroix_T_truthiness.tif"
+                    # ]
 
 # training ------------
 prepare = True
 # prepare = False
+single = True
 # n_models = True
 n_models = False
-# RF = True
-RF = False
-# SVM = True
-SVM = False
+RF = True
+# RF = False
+# kfold = True
+kfold = False
 # write_model = True
 write_model = False
 model_dir = r'P:\Thesis\Models'
-model_name = model_dir + '\SVM_model_11Band_2Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+# model_dir = r"C:\_Thesis\_Monday\Models"
+model_name = model_dir + '\RF_model_11Band_nMasks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
 
 # add logging
 
@@ -144,19 +159,10 @@ model_name = model_dir + '\SVM_model_11Band_2Masks_' + current_time.strftime('%Y
 # %% prediction ------------
 
 if predict:
-    # predict_raster = r"P:\Thesis\Test Data\Portland\_Bands_11Band\_Composite\Portland_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_Bands_11Band\_Composite\RockyHarbor_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_11Band\_Composite\GreatLakes_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\NWHI\_Bands_11Band\_Composite\NWHI_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\FL Keys\_Bands_11Band\_Composite\FL Keys_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\HalfMoon\_Bands_11Band\_Composite\HalfMoon_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_Bands_11Band\_Composite\PuertoReal_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\WakeIsland\_Bands_11Band\_Composite\WakeIsland_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\StCroix\_Bands_11Band\_Composite\StCroix_composite.tif"
-    predict_raster = r"P:\Thesis\Test Data\GreatLakes\_Bands_11Band\_Composite\GreatLakes_composite.tif"
-    use_model = r"P:\Thesis\Models\SVM_model_11Band_2Masks_20230127_1136.pkl"
-    # use_model = r"P:\Thesis\Models\RF_model_11Band_2Masks_20230125_1318.pkl"
-    
+    predict_raster = r"P:\Thesis\Test Data\NWHI\_8Band\_Composite\NWHI_Extents_composite.tif"
+    o_model = r"P:\Thesis\Models\RF_model_11Band_nMasks_20230201_1340.pkl"
+    use_models = r"P:\Thesis\Models\RandomForest"
+
     # write_prediction = True
     write_prediction = False
     
@@ -186,21 +192,31 @@ def correlation_matrix(correlation):
     cb.ax.tick_params(labelsize=14)
     plt.title('Correlation Matrix', fontsize=12);
     plt.show()
+    return None
     
-def plotImage(image,labels,cmap):
+def plotImage(image,labels,cmap,title):
     #-- add legend: https://bitcoden.com/answers/how-to-add-legend-to-imshow-in-matplotlib
     plt.figure()
     plt.imshow(image)
     plt.grid(False)
-    plt.title('Truthiness Prediction')
+    plt.title(title)
     plt.xlabel('X (pixels)')
     plt.ylabel('Y (pixels)')
     patches =[mpatches.Patch(color=cmap[i],label=labels[i]) for i in cmap]
-    plt.legend(handles=patches, loc=2)
+    # plt.legend(handles=patches, loc=4)
+    plt.legend(handles=patches,loc='lower center', bbox_to_anchor=(0.5, -0.25),
+          fancybox=True, shadow=True, ncol=3, prop={'size': 7})
     plt.show()
+    return None
     
 def scaleData(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
+
+def log_output(in_string):
+    f = open(log_file, 'a')
+    f.write(in_string)
+    f.close()
+    return None
 
 
 # %% - prepare training data
@@ -230,11 +246,9 @@ if prepare:
         # rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
         # X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
         # X_new = np.nan_to_num(X_new)
-        print(f'Added {tif} to X_train training data set.')
+        print(f'Added {tif} to X_train training data set. Shape: {np.array(bands_t).transpose().shape}')
         
-        f = open(log_file, 'a')
-        f.write(f'\nAdded {tif} to X_train training data set.')
-        f.close()
+        log_output(f'\nAdded {tif} to X_train training data set.')
         
         bands = None
     
@@ -247,11 +261,11 @@ if prepare:
         # print(f'{os.path.basename(tif)} shape: {bands.shape}')
         tf = bands.ravel()
         all_truthiness.append(tf)
-        print(f'Added {tif} to Y_train truthiness training data set.')
+        print(f'Added {tif} to Y_train truthiness training data set. Shape: {tf.shape}')
         
-        f = open(log_file, 'a')
-        f.write(f'\nAdded {tif} to Y_train truthiness training data set.')
-        f.close()
+
+        log_output(f'\nAdded {tif} to Y_train truthiness training data set.')
+
         
         bands = None
         
@@ -266,123 +280,171 @@ if prepare:
     X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
     print('\nPrepared training data...')
     
-    print(f'\nX_train size: {X_train.size}\nY_train size: {Y_train.size}\nX_test size: {X_test.size}\nY_test size: {Y_test.size}')
+    print(f'\nX_train pixels: {x_train.size}\nY_train pixels: {y_train.size}')
     print(f'\nX_train shape: {X_train.shape}\nY_train shape: {Y_train.shape}\nX_test shape: {X_test.shape}\nY_test shape: {Y_test.shape}')
     
     row_check = (X_train.shape[0] + X_test.shape[0]) - (Y_train.shape[0] + Y_test.shape[0])
     
     if row_check != 0:
         print('X and Y training/test row number mismatch. Stopping...')
-        
-        f = open(log_file, 'a')
-        f.write('\n\nX and Y training/test row number mismatch. Stopping...')
-        f.close()
+
+        log_output('\n\nX and Y training/test row number mismatch. Stopping...')
+
     else:
         print(f'\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}')
         print(f'Y_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}')
-        print('Verified number of rows in training data correct.')
+        print('--Verified number of rows in training data correct.')
         
-        f = open(log_file, 'a')
-        f.write(f'\n\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}')
-        f.write(f'\nY_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}')
-        f.write('\nVerified number of rows in training data correct.')
-        f.close()
+        log_output(f'\n\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}'
+                   f'\nY_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}'
+                   f'\n--Verified number of rows in training data correct.'
+                   f'\n')
+
         
 
 # %% - train/predict
 
 # https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html
 
-if train and RF:
+if train and single:
     # train random forest model
-    print('Training model...')
+    start_time = time.time()
     # https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
-    model = RandomForestClassifier(n_estimators = 100, random_state = 42)     
+    model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1)
+    # model = MLPClassifier(max_iter=1000, random_state=42, activation='relu')
+    
+    if kfold:
+        print('\n--Performing k-fold cross validation...')
+        log_output('\n--Performing k-fold cross validation...')
+        
+        scores = cross_val_score(model, x_train, y_train, cv=5)
+        print(f'\nk-fold cross validation results:\n{scores}')
+        print("\n%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
+        log_output(f'\nk-fold cross validation results:\n{scores}'
+                   f'\n{scores.mean():.2f} accuracy with a standard deviation of {scores.std():.2f}')
+    
+    print('\nTraining model...')
+    log_output('\nTraining model...')
     model.fit(X_train, Y_train)
+    print('Trained model...')
+    
+    #-- accuracy assessment 
+    print('\nPlotting ROC AUC...')
+    roc_auc=ROCAUC(model, classes=np.unique(Y_train))
+    roc_auc.fit(X_train, Y_train)
+    roc_auc.score(X_test, Y_test)
+    roc_auc.show()
+    
+    print('\n--Computing Precision, Recall, F1...')
+    prec_recall_f1 = precision_recall_fscore_support(Y_test, model.predict(X_test))
+    print(f'--Precision, Recall, F1:\n{prec_recall_f1}')
+    
+    print('\n--Computing accuracy...')
+    acc1 = accuracy_score(Y_test, model.predict(X_test))*100.0
+    print (f'--Validation Accuracy= {acc1:.2f} %') 
+    
+    # print('\n--Computing precision...')
+    # precision = precision_score(Y_test, model.predict(X_test))
+    # print (f'\n--Precision: {precision:.3f}')
+    
+    # print('\n--Computing recall...')
+    # recall = recall_score(Y_test, model.predict(X_test))
+    # print (f'\n--Recall: {recall:.3f}')
+    
+    # print('\n--Computing F1...')
+    # f1 = f1_score(Y_test, model.predict(X_test))
+    # print (f'--F1: {f1:.3f} ')
+    
+    print('\n--Creating confusion matrix...')
+    confusion = confusion_matrix(Y_test, model.predict(X_test), labels=model.classes_)
+    # print (f'\n--Confusion Matrix = {confusion:.3f} ')
+    disp = ConfusionMatrixDisplay(confusion_matrix=confusion, display_labels=model.classes_)
+    disp.plot()
+    plt.show()
     
     if write_model:
         pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
         print(f'Saved random forest model: {model_name}\n')
 
-    feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False)
-    print(f'Feature Importance:\n{feature_importance}')
+    if RF:
+        feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False)
+        print(f'\nFeature Importance:\n{feature_importance}')
+        log_output(f'\n--Random forest Validation Accuracy= {acc1:.2f} %'
+                   f'\nFeature Importance:\n{feature_importance}')
+        
+        df = pd.DataFrame(X_train, columns=feature_list)
+        correlation = df.corr()
+        correlation_matrix(correlation)
     
-    df = pd.DataFrame(X_train, columns=feature_list)
-    correlation = df.corr()
-    correlation_matrix(correlation)
-elif train and SVM:
-    # train SVM model
-    print('Splitting data into training and testing...')
-    # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
-    X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size=0.2, random_state=42)
-    print('Training model...')
-    # https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
-    model = SVC(gamma='auto')
-    model.fit(X_train, Y_train)
-    
-    # add in accuracy accessment from metrics
-    #-- accuracy assessment 
-    acc1 = metrics.accuracy_score(Y_test, model.predict(X_test))*100.0
-    print ("\n-RF Validation Accuracy= %.3f %%" % acc1) 
-    
-    #-- some sklearn classifiers provide the class probabilities for each data 
-    # probability = model.predict_proba(X_test)
-    
-    # add yellowbrick ROCAUC
-    
-    if write_model:
-        pickle.dump(model, open(model_name, 'wb')) # save the trained SVM model
-        print(f'Saved svm model: {model_name}\n')
+    print('--Total elapsed time: %.3f seconds ---' % (time.time() - start_time))
 elif train and n_models:
-
+    
     names = [
-        "Linear SVM",
-        "RBF SVM",
-        "Gaussian Process",
-        "Decision Tree",
         "Random Forest",
-        "Neural Net",
+        "MLP",
         "AdaBoost",
         "Naive Bayes",
-        "QDA",
-        "Nearest Neighbors"
-    ]
+        "Hist Gradient Boosting",
+        # "Gaussian Process",
+        "Decision Tree",
+        "Nearest Neighbors",
+        "Gradient Boosting",
+        "RBF SVM"]
+        # "Linear SVM"
+        # "QDA"]
 
     classifiers = [
-        SVC(kernel="linear", C=0.025),
-        SVC(gamma='auto', C=1),
-        GaussianProcessClassifier(1.0 * RBF(1.0)),
-        DecisionTreeClassifier(max_depth=5),
-        RandomForestClassifier(n_estimators=100),
-        MLPClassifier(alpha=1, max_iter=1000),
-        AdaBoostClassifier(),
-        GaussianNB(),
-        QuadraticDiscriminantAnalysis(),
-        KNeighborsClassifier(3)
-    ]
+        RandomForestClassifier(n_estimators=100, random_state=42),
+        MLPClassifier(max_iter=1000, random_state=42)]
+        # AdaBoostClassifier(random_state=42),
+        # GaussianNB(),
+        # HistGradientBoostingClassifier(random_state=42),
+        # GaussianProcessClassifier(1.0 * RBF(1.0)),
+        # DecisionTreeClassifier(random_state=42),
+        # KNeighborsClassifier(3),
+        # GradientBoostingClassifier(n_estimators=100, random_state=42),
+        # SVC(gamma='auto', random_state=42)]
+        # SVC(kernel="linear", C=0.025, random_state=42)
+        # QuadraticDiscriminantAnalysis()]
     
     print(f'\nTraining with the following models:\n{names}')
+    start_time = time.time()
     
     for name, clf in zip(names, classifiers):
-        print(f'\nTraining {name} model...')
-      
-        clf.fit(X_train, Y_train)
-        
-        model_name = model_dir + '\\' + name + '_model_11Band_2Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
-        
-        #-- accuracy assessment 
-        acc1 = metrics.accuracy_score(Y_test, model.predict(X_test))*100.0
-        print (f'\n--{name} Validation Accuracy= {acc1}') 
-        f = open(log_file, 'a')
-        f.write(f'\nTraining with the following models:\n{names}')
-        f.write(f'\nTraining {name} model...')
-        f.write(f'\n--{name} Validation Accuracy= {acc1}')
-        f.close()
-        
-        if write_model:
-            pickle.dump(model, open(model_name, 'wb')) # save the trained model
-            print(f'--Saved {name} model: {model_name}\n')     
-elif predict:
+        m = TicToc()
+        m.tic()
+        print(f'\nBegan training {name} model...')
+        # train model
+        try:
+            clf.fit(X_train, Y_train)
+            print(f'Trained {name} model...')
+                    
+            #-- accuracy assessment 
+            acc1 = metrics.accuracy_score(Y_test, clf.predict(X_test))*100.0
+            print (f'--{name} Validation Accuracy= {acc1:.2f} %') 
+            m.toc()
+            
+            f = open(log_file, 'a')
+            f.write(f'\nTraining with the following models:\n{names}')
+            f.write(f'\nTraining {name} model...')
+            f.write(f'\n--{name} Validation Accuracy= {acc1}')
+            f.write('--Total elapsed time: %.3f seconds ---' % (time.time() - start_time))
+            f.close()
+            
+            if write_model:
+                model_name = model_dir + '\\' + name + '_model_11Band_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+                
+                pickle.dump(clf, open(model_name, 'wb')) # save the trained model
+                print(f'--Saved trained {name} model to {model_name}\n')
+                f = open(log_file, 'a')
+                f.write(f'\nSaved trained {name} model to {model_name}')
+        except:
+            print(f'****Issue encountered training {name}')
+            f = open(log_file, 'a')
+            f.write(f'\n****Issue encountered training {name}')
+            f.close()
+
+if predict:
     #-- Every cell location in a raster has a value assigned to it. 
     #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
     upper_limit = np.finfo(np.float32).max/10
@@ -406,41 +468,90 @@ elif predict:
     mask = predictors[:,:,0]
     print('Read raster to predict...')
     
-    model = pickle.load(open(use_model, 'rb'))
-    print(f'Loaded model: {use_model}')
+    start_time = time.time()
     
-    rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
-    X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
-    X_new = np.nan_to_num(X_new)
-    im_predicted = np.zeros((mask.shape))
-    
-    print('Predicting...')
-    predicted = model.predict(X_new)
-    im_predicted[rc[:,0],rc[:,1]] = predicted
-    
-    # print('Median filter...')
-    # im_predicted = median_filter(im_predicted, size=5, mode='reflect')
-    
-    print('Plotting...')
-    plotImage(colorMap(im_predicted),labels,cmap)  
-    
-    if write_prediction:
-        out_meta.update({"driver": "GTiff",
-                          "height": predictors.shape[0],
-                          "width": predictors.shape[1],
-                          "count": 1})
+    if n_models:
+        for pkl in os.listdir(use_models):
+            if'SVM' not in pkl and 'Nearest' not in pkl:
+                model = pickle.load(open(os.path.join(use_models, pkl), 'rb'))
+                print(f'Loaded model: {model}')
+                
+                rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
+                X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
+                X_new = np.nan_to_num(X_new)
+                im_predicted = np.zeros((mask.shape))
+                
+                print('Predicting...')
+                predicted = model.predict(X_new)
+                im_predicted[rc[:,0],rc[:,1]] = predicted
+                
+                # print('Median filter...')
+                # im_predicted = median_filter(im_predicted, size=5, mode='reflect')
+                
+                plot_title = pkl.split('_model')[0]
+                
+                print('Plotting...')
+                plotImage(colorMap(im_predicted),labels,cmap,plot_title)
+                
+                model = None
+                
+                print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+                
+                if write_prediction:
+                    out_meta.update({"driver": "GTiff",
+                                      "height": predictors.shape[0],
+                                      "width": predictors.shape[1],
+                                      "count": 1})
+                    
+                    with rasterio.open(prediction_path, "w", **out_meta) as dest:
+                        dest.write(im_predicted, 1)
+                    
+                    predictors = None
+                    dest = None
+                        
+                    print(f'Saved prediction raster: {prediction_path}')
+    else:
+        model = pickle.load(open(o_model, 'rb'))
+        print(f'Loaded model: {model}')
         
-        with rasterio.open(prediction_path, "w", **out_meta) as dest:
-            dest.write(im_predicted, 1)
+        rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
+        X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
+        X_new = np.nan_to_num(X_new)
+        im_predicted = np.zeros((mask.shape))
         
-        predictors = None
-        dest = None
+        print('Predicting...')
+        predicted = model.predict(X_new)
+        im_predicted[rc[:,0],rc[:,1]] = predicted
+        
+        # print('Median filter...')
+        # im_predicted = median_filter(im_predicted, size=5, mode='reflect')
+        
+        plot_title = os.path.basename(o_model).split('_model')[0]
+        
+        print('Plotting...')
+        plotImage(colorMap(im_predicted),labels,cmap,plot_title)
+        
+        model = None
+        
+        print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+        
+        if write_prediction:
+            out_meta.update({"driver": "GTiff",
+                              "height": predictors.shape[0],
+                              "width": predictors.shape[1],
+                              "count": 1})
             
-        print(f'Saved prediction raster: {prediction_path}')
-
-# # 11:09:47 From  Michael Olsen  to  Everyone:
-# # 	https://pro.arcgis.com/en/pro-app/latest/tool-reference/image-analyst/export-training-data-for-deep-learning.htm
-# # 11:10:45 From  Michael Olsen  to  Everyone:
-# # 	https://www.esri.com/training/catalog/5eb18cf2a7a78b65b7e26134/deep-learning-using-arcgis/
+            with rasterio.open(prediction_path, "w", **out_meta) as dest:
+                dest.write(im_predicted, 1)
+            
+            predictors = None
+            dest = None
+                
+            print(f'Saved prediction raster: {prediction_path}')
+    
+    # # 11:09:47 From  Michael Olsen  to  Everyone:
+    # # 	https://pro.arcgis.com/en/pro-app/latest/tool-reference/image-analyst/export-training-data-for-deep-learning.htm
+    # # 11:10:45 From  Michael Olsen  to  Everyone:
+    # # 	https://www.esri.com/training/catalog/5eb18cf2a7a78b65b7e26134/deep-learning-using-arcgis/
 
 t.toc()
