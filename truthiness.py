@@ -6,21 +6,27 @@ Created on Tue Jan 10 12:43:02 2023
 """
 
 import datetime
+# from keras.metrics import MeanIoU
 import matplotlib.patches as mpatches 
 import matplotlib.pyplot as plt
+from matplotlib import rcParams
 import numpy as np
 import os
 import pandas as pd
 import pickle
+from torch import tensor
+# from torchmetrics import JaccardIndex
+from torchmetrics.classification import MulticlassJaccardIndex
 import rasterio
 from pytictoc import TicToc
-# from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter, gaussian_filter
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, AdaBoostClassifier
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.metrics import accuracy_score, ConfusionMatrixDisplay, classification_report
 from sklearn.model_selection import cross_val_score
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
+import sys
 import time
 from yellowbrick.classifier import ROCAUC
 # from sklearn.metrics import PrecisionRecallDisplay
@@ -29,6 +35,7 @@ t = TicToc()
 t.tic()
 
 np.random.seed(42)
+rcParams['figure.dpi'] = 600
 
 # %% - globals
 
@@ -52,12 +59,19 @@ feature_list = ["w492nm",               #1
                 # "pSDBg_tri_Wilson",     #10
                 "pSDBr"]                #11
 
-labels = {0: 'No Data', 1: 'False', 2:'True'}
+# labels = {0: 'No Data', 1: 'False', 2:'True'}
+tf_labels = {0: 'No Data', 1: 'False', 2: 'True'}
+iou_labels = {0: 'No Data', 2: 'False Agreement', 3: 'Disagreement', 4: 'True Agreement'}
 
-cmap = {0:[225/255, 245/255, 255/255, 1],
-        1:[225/255, 175/255, 0/255, 1],
-        2:[75/255, 130/255, 0/255, 1]}
+tf_cmap = {0:[225/255, 245/255, 255/255, 1],
+           1:[225/255, 175/255, 0/255, 1],
+           2:[75/255, 130/255, 0/255, 1]}
 
+iou_cmap = {0:[0/255, 0/255, 0/255, 1],
+            2:[225/255, 175/255, 0/255, 1],
+            3:[75/255, 100/255, 255/255, 1],
+            4:[75/255, 180/255, 210/255, 1]}
+#         5:[0/255, 255/255, 100/255, 1]
 
 # %% - case
 
@@ -65,11 +79,6 @@ cmap = {0:[225/255, 245/255, 255/255, 1],
 # predict = False
 train = False
 predict = True
-
-# flkeys_composite = r"P:\Thesis\Training\FLKeys\_Bands_11Band\_Composite\FLKeys_composite.tif"
-# keylargo_composite = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_11Band\_Composite\KeyLargo_composite.tif"
-# flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
-# keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
 
 # 8 band
 flkeys_composite = r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif"
@@ -79,10 +88,29 @@ stcroix_composite = r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Exten
 flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
 keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
 stcroix_training_mask = r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif"
+# keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargo_Multiclass_Training.tif"
+# stcroix_training_mask = r"P:\Thesis\Samples\Raster\StCroix_Multiclass_Training.tif"
 
-composite_rasters = [keylargo_composite, flkeys_composite, stcroix_composite]
-training_rasters = [keylargo_training_mask, flkeys_training_mask, stcroix_training_mask ]
+# composite_rasters = [flkeys_composite, keylargo_composite, stcroix_composite]
+# training_rasters = [flkeys_training_mask, keylargo_training_mask, stcroix_training_mask]
 
+composite_rasters = [r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif",
+                    # r"P:\Thesis\Training\KeyLargo\_8Band\_Composite\KeyLargoExtent_composite.tif",
+                    r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif",
+                    r"P:\Thesis\Training\FLKeys\_8Band_Deep\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+                    r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_composite.tif"
+                    ]
+
+training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
+                    # r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif",
+                    r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
+                    r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
+                    r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
+                    ]
+
+if len(composite_rasters) != len(training_rasters):
+    print('Unequal number of composites and validated training data...')
+    sys.exit()
 
 # training ------------
 # prepare = True
@@ -90,16 +118,16 @@ prepare = False
 single = True
 # n_models = True
 n_models = False
-# RF = True
-RF = False
+RF = True
+# RF = False
 # kfold = True
 kfold = False
-# write_model = True
-write_model = False
-stdevs = 5
+write_model = True
+# write_model = False
+# stdevs = 3
 model_dir = r'P:\Thesis\Models'
 # model_dir = r"C:\_Thesis\_Monday\Models"
-model_name = model_dir + '\OutlierTest_RF_model_8Band_nMasks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+model_name = model_dir + '\RF_8Band_4Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
 
 # add logging
 
@@ -107,10 +135,25 @@ model_name = model_dir + '\OutlierTest_RF_model_8Band_nMasks_' + current_time.st
 # %% prediction ------------
 
 if predict:
-    predict_raster = r"P:\Thesis\Test Data\HalfMoon\_8Band\_Composite\Halfmoon_Extents_composite.tif"
-    # o_model = r"P:\Thesis\Models\RF_model_8Band_nMasks_20230201_1340.pkl"
-    o_model = r"P:\Thesis\Models\OutlierTest{stdevs}_RF_model_8Band_nMasks_20230203_1121.pkl"
+    # predict_raster = r"P:\Thesis\Test Data\A_Samoa\_8Band\_Composite\A_Samoa_Harbor_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\A_Samoa\_8Band\_Composite\A_Samoa_Airport_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\A_Samoa_2019\_8Band\_Composite\A_Samoa_Airport_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\A_Samoa_2019\_8Band\_Composite\A_Samoa_Harbor_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\NWHI\_8Band\_Composite\NWHI_Extents_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_8Band\_Composite\GreatLakes_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\HalfMoon\_8Band_DryTortugas\_Composite\DryTortugas_Extents_composite.tif"
+    
+    predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band_MaskChk\_Composite\Saipan_Mask_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
+    # o_model = r"P:\Thesis\Models\RF_8Band_5Masks_20230210_0731.pkl"
+    o_model = r"P:\Thesis\Models\RF_8Band_4Masks_20230210_0740.pkl"
     use_models = r"P:\Thesis\Models\RandomForest"
+
+    # IOU metrics
+    Perform_IOU = True # intersection over union
+    use_torchmetrics = False
+    # test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
+    test_mask = r"P:\Thesis\Masks\Saipan_Mask_TF.tif"
 
     # write_prediction = True
     write_prediction = False
@@ -121,16 +164,24 @@ if predict:
         if not os.path.exists(prediction_path):
             os.makedirs(prediction_path)
         
-        prediction_path = prediction_path + '\MLP_prediction_8Band_Mask_5stdev_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
+        prediction_path = prediction_path + '\RF_prediction_8Band_Mask_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
 
 
 # %% - functions
 
-def colorMap(data):
+def tf_colorMap(data):
     rgba = np.zeros((data.shape[0],data.shape[1],4))
-    rgba[data==0, :] = [225/255, 245/255, 255/255, 1] # unclassified 
+    rgba[data==0, :] = [0/255, 0/255, 0/255, 1] # unclassified 
     rgba[data==1, :] = [225/255, 175/255, 0/255, 1]
     rgba[data==2, :] = [75/255, 130/255, 0/255, 1]
+    return rgba
+
+def iou_colorMap(data):
+    rgba = np.zeros((data.shape[0],data.shape[1],4))
+    rgba[data==0, :] = [0/255, 0/255, 0/255, 1] # unclassified 
+    rgba[data==2, :] = [225/255, 175/255, 0/255, 1]
+    rgba[data==3, :] = [170/255, 50/255, 90/255, 1]
+    rgba[data==4, :] = [75/255, 180/255, 210/255, 1]
     return rgba
 
 def correlation_matrix(correlation):
@@ -153,8 +204,8 @@ def plotImage(image,labels,cmap,title):
     plt.ylabel('Y (pixels)')
     patches =[mpatches.Patch(color=cmap[i],label=labels[i]) for i in cmap]
     # plt.legend(handles=patches, loc=4)
-    plt.legend(handles=patches,loc='lower center', bbox_to_anchor=(0.5, -0.25),
-          fancybox=True, shadow=True, ncol=3, prop={'size': 7})
+    plt.legend(handles=patches,loc='lower center', bbox_to_anchor=(0.5, -0.2),
+          fancybox=True, shadow=True, ncol=3, prop={'size': 8})
     plt.show()
     return None
     
@@ -185,7 +236,8 @@ if prepare:
             ft[ft == -9999.] = 0.
             ft = np.nan_to_num(ft)
             ft[(ft < lower_limit) | (ft > upper_limit)] = 0.
-            ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
+            # ft = median_filter(ft,size=3)
+            # ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
             predictors_list.append(scaleData(ft))
         
         predictors = np.array(predictors_list).transpose((1,2,0))
@@ -229,7 +281,7 @@ if prepare:
     X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
     print('\nPrepared training data...')
     
-    print(f'\nX_train pixels: {x_train.size}\nY_train pixels: {y_train.size}')
+    print(f'\nX_train pixels: {x_train.size:,}\nY_train pixels: {y_train.size:,}')
     print(f'\nX_train shape: {X_train.shape}\nY_train shape: {Y_train.shape}\nX_test shape: {X_test.shape}\nY_test shape: {Y_test.shape}')
     
     row_check = (X_train.shape[0] + X_test.shape[0]) - (Y_train.shape[0] + Y_test.shape[0])
@@ -240,8 +292,8 @@ if prepare:
         log_output('\n\nX and Y training/test row number mismatch. Stopping...')
 
     else:
-        print(f'\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}')
-        print(f'Y_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}')
+        print(f'\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]:,}')
+        print(f'Y_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]:,}')
         print('--Verified number of rows in training data correct.')
         
         log_output(f'\n\nX_train + X_test (row check): {X_train.shape[0] + X_test.shape[0]}'
@@ -259,10 +311,27 @@ if train and single:
     # train random forest model
     start_time = time.time()
     # https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
-    model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1, oob_score=True)
+    # model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1, oob_score=True)
     # model = MLPClassifier(max_iter=1000, random_state=42, activation='relu', solver='adam')
     # model = HistGradientBoostingClassifier(random_state=42)
-    # model = AdaBoostClassifier(random_state=42)
+    model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1, oob_score=True)
+                                    # max_depth=3, min_samples_leaf=10, min_samples_split=9)
+    
+    # print('\nStarted randomized search on hyper parameters...')
+    
+    # from sklearn.experimental import enable_halving_search_cv  # noqa
+    # from sklearn.model_selection import HalvingRandomSearchCV
+    # from scipy.stats import randint
+    
+    # clf = RandomForestClassifier(random_state=42)
+    # param_distributions = {"max_depth": [3, None],
+    #                    "min_samples_split": randint(2, 11),
+    #                    "min_samples_leaf": randint(2,11)}
+    # search = HalvingRandomSearchCV(clf, param_distributions,
+    #                            resource='n_estimators',
+    #                            max_resources=10,
+    #                            random_state=42).fit(X_train, Y_train)
+    # search.best_params_ 
     
     if kfold:
         print('\n--Performing k-fold cross validation...')
@@ -277,9 +346,11 @@ if train and single:
     print('\nTraining model...')
     log_output('\nTraining model...')
     model.fit(X_train, Y_train)
-    print('Trained model...')
+    print(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+    log_output(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
     
-    #-- accuracy assessment    
+    #-- accuracy assessment
+    print('\nAssessing accuracy...')    
     oob_error = 1 - model.oob_score_
     print(f'\nOOB Error: {oob_error}')
     
@@ -333,73 +404,6 @@ if train and single:
         pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
         print(f'\nSaved model: {model_name}\n')
 
-    print('--Total elapsed time: %.3f seconds ---' % (time.time() - start_time))
-elif train and n_models:
-    
-    names = [
-        "Random Forest",
-        "MLP",
-        "AdaBoost",
-        "Naive Bayes",
-        "Hist Gradient Boosting",
-        # "Gaussian Process",
-        "Decision Tree",
-        "Nearest Neighbors",
-        "Gradient Boosting",
-        "RBF SVM"]
-        # "Linear SVM"
-        # "QDA"]
-
-    classifiers = [
-        RandomForestClassifier(n_estimators=100, random_state=42),
-        MLPClassifier(max_iter=1000, random_state=42)]
-        # AdaBoostClassifier(random_state=42),
-        # GaussianNB(),
-        # HistGradientBoostingClassifier(random_state=42),
-        # GaussianProcessClassifier(1.0 * RBF(1.0)),
-        # DecisionTreeClassifier(random_state=42),
-        # KNeighborsClassifier(3),
-        # GradientBoostingClassifier(n_estimators=100, random_state=42),
-        # SVC(gamma='auto', random_state=42)]
-        # SVC(kernel="linear", C=0.025, random_state=42)
-        # QuadraticDiscriminantAnalysis()]
-    
-    print(f'\nTraining with the following models:\n{names}')
-    start_time = time.time()
-    
-    for name, clf in zip(names, classifiers):
-        m = TicToc()
-        m.tic()
-        print(f'\nBegan training {name} model...')
-        # train model
-        try:
-            clf.fit(X_train, Y_train)
-            print(f'Trained {name} model...')
-                    
-            #-- accuracy assessment 
-            acc1 = accuracy_score(Y_test, clf.predict(X_test))*100.0
-            print (f'--{name} Validation Accuracy= {acc1:.2f} %') 
-            m.toc()
-            
-            f = open(log_file, 'a')
-            f.write(f'\nTraining with the following models:\n{names}')
-            f.write(f'\nTraining {name} model...')
-            f.write(f'\n--{name} Validation Accuracy= {acc1}')
-            f.write('--Total elapsed time: %.3f seconds ---' % (time.time() - start_time))
-            f.close()
-            
-            if write_model:
-                model_name = model_dir + '\\' + name + '_model_11Band_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
-                
-                pickle.dump(clf, open(model_name, 'wb')) # save the trained model
-                print(f'--Saved trained {name} model to {model_name}\n')
-                f = open(log_file, 'a')
-                f.write(f'\nSaved trained {name} model to {model_name}')
-        except:
-            print(f'****Issue encountered training {name}')
-            f = open(log_file, 'a')
-            f.write(f'\n****Issue encountered training {name}')
-            f.close()
 
 if predict:
     #-- Every cell location in a raster has a value assigned to it. 
@@ -417,13 +421,14 @@ if predict:
         ft[ft == -9999.] = 0.
         ft = np.nan_to_num(ft)
         ft[(ft < lower_limit) | (ft > upper_limit)] = 0.
-        ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
+        # ft = median_filter(ft,size=3)
+        # ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
         features_list.append(scaleData(ft))
     
     features_arr = np.array(features_list)
     predictors = np.moveaxis(features_arr,0,-1) # np.ndstack is slow  
     mask = predictors[:,:,0]
-    print('Read raster to predict...')
+    print(f'Read raster to predict: {predict_raster}')
     
     start_time = time.time()
     
@@ -448,7 +453,7 @@ if predict:
                 plot_title = pkl.split('_model')[0]
                 
                 print('Plotting...')
-                plotImage(colorMap(im_predicted),labels,cmap,plot_title)
+                plotImage(tf_colorMap(im_predicted),tf_labels,tf_cmap,plot_title)
                 
                 model = None
                 
@@ -476,7 +481,7 @@ if predict:
         X_new = np.nan_to_num(X_new)
         im_predicted = np.zeros((mask.shape))
         
-        print('Predicting...')
+        print('\nPredicting...')
         predicted = model.predict(X_new)
         im_predicted[rc[:,0],rc[:,1]] = predicted
         
@@ -485,12 +490,12 @@ if predict:
         
         plot_title = os.path.basename(o_model).split('_model')[0]
         
-        print('Plotting...')
-        plotImage(colorMap(im_predicted),labels,cmap,plot_title)
+        print('\nPlotting...')
+        plotImage(tf_colorMap(im_predicted),tf_labels,tf_cmap,plot_title)
         
         model = None
         
-        print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+        print('\n--Prediction elapsed time: %.3f seconds\n' % (time.time() - start_time))
         
         if write_prediction:
             out_meta.update({"driver": "GTiff",
@@ -504,14 +509,46 @@ if predict:
             predictors = None
             dest = None
                 
-            print(f'Saved prediction raster: {prediction_path}')
+            print(f'\nSaved prediction raster: {prediction_path}')
     
     # # 11:09:47 From  Michael Olsen  to  Everyone:
     # # 	https://pro.arcgis.com/en/pro-app/latest/tool-reference/image-analyst/export-training-data-for-deep-learning.htm
     # # 11:10:45 From  Michael Olsen  to  Everyone:
     # # 	https://www.esri.com/training/catalog/5eb18cf2a7a78b65b7e26134/deep-learning-using-arcgis/
 
-t.toc()
+# %% - IOU
+
+    if Perform_IOU:
+        print('Performing intersection over union analysis...')
+        bandmask = rasterio.open(test_mask).read(1)
+        if use_torchmetrics:
+            target = tensor(bandmask)
+            preds = tensor(im_predicted)
+            metric = MulticlassJaccardIndex(num_classes=3) # https://torchmetrics.readthedocs.io/en/stable/classification/jaccard_index.html
+            metric(preds, target)
+            print(f'IOU: {metric(preds, target)}')
+        
+        differences = bandmask + im_predicted
+        plot_title = 'IOU'
+        plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
+        
+        # method in keras with working environment
+        # print('Performing intersection over union analysis...')
+        # bandmask = rasterio.open(test_mask).read().transpose(1,2,0)
+        # truth = np.nan_to_num(bandmask)
+        # # truth[truth == 1] = 3
+        # # truth[truth == 2] = 1
+        # # truth[truth == 3] = 2
+        # # truth = truth[:,:1073]
+        # # im_predicted = image_predicted[1:-1,:]
+        # prediction1 = np.reshape(im_predicted, (im_predicted.shape[0] * im_predicted.shape[1]))
+        # truth1 = np.reshape(truth, (truth.shape[0] * truth.shape[1]))
+        # # from keras.metrics import MeanIoU
+        # m = MeanIoU(num_classes=3)
+        # m.update_state(truth1, prediction1)
+        # print('\nMean IOU:', m.result().numpy())
+
+t.toc('Truthiness.py total time:')
 # %%
 
 # from sklearn.model_selection import train_test_split
@@ -539,10 +576,10 @@ t.toc()
 #                     r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Deep_composite.tif",
 #                     r"C:\_Thesis\_Monday\X_train\Halfmoon_F_Turbid_composite.tif",
 #                     r"C:\_Thesis\_Monday\X_train\Halfmoon_T_composite.tif",
-#                     # r"C:\_Thesis\_Monday\X_train\KeyLargo_F_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\KeyLargo_F_composite.tif",
 #                     r"C:\_Thesis\_Monday\X_train\KeyLargo_TF_composite.tif",
 #                     r"C:\_Thesis\_Monday\X_train\NWHI_F_Deep_composite.tif",
-#                     # r"C:\_Thesis\_Monday\X_train\NWHI_T_composite.tif",
+#                     r"C:\_Thesis\_Monday\X_train\NWHI_T_composite.tif",
 #                     # r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Clean_composite.tif",
 #                     # r"C:\_Thesis\_Monday\X_train\PR_F_Deep_Noise_composite.tif",
 #                     # r"C:\_Thesis\_Monday\X_train\PR_F_Turbid_composite.tif",
@@ -552,20 +589,87 @@ t.toc()
 #                     ]
 
 # training_rasters = [
-                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Deep_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Turbid_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\FLKeys_T_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Deep_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Turbid_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\Halfmoon_T_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\KeyLargo_F_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\KeyLargo_TF_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\NWHI_F_Deep_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\NWHI_T_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Clean_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Noise_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\PR_F_Turbid_truthiness.tif",
-                    # # r"C:\_Thesis\_Monday\Y_train\PR_TF_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\StCroix_F_Deep_truthiness.tif",
-                    # r"C:\_Thesis\_Monday\Y_train\StCroix_T_truthiness.tif"
-                    # ]
+#                     r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Deep_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\FLKeys_F_Turbid_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\FLKeys_T_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Deep_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\Halfmoon_F_Turbid_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\Halfmoon_T_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\KeyLargo_F_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\KeyLargo_TF_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\NWHI_F_Deep_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\NWHI_T_truthiness.tif",
+#                     # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Clean_truthiness.tif",
+#                     # r"C:\_Thesis\_Monday\Y_train\PR_F_Deep_Noise_truthiness.tif",
+#                     # r"C:\_Thesis\_Monday\Y_train\PR_F_Turbid_truthiness.tif",
+#                     # r"C:\_Thesis\_Monday\Y_train\PR_TF_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\StCroix_F_Deep_truthiness.tif",
+#                     r"C:\_Thesis\_Monday\Y_train\StCroix_T_truthiness.tif"
+#                     ]
+
+# elif train and n_models:
+    
+#     names = [
+#         "Random Forest",
+#         "MLP",
+#         "AdaBoost",
+#         "Naive Bayes",
+#         "Hist Gradient Boosting",
+#         # "Gaussian Process",
+#         "Decision Tree",
+#         "Nearest Neighbors",
+#         "Gradient Boosting",
+#         "RBF SVM"]
+#         # "Linear SVM"
+#         # "QDA"]
+
+#     classifiers = [
+#         RandomForestClassifier(n_estimators=100, random_state=42),
+#         MLPClassifier(max_iter=1000, random_state=42)]
+#         # AdaBoostClassifier(random_state=42),
+#         # GaussianNB(),
+#         # HistGradientBoostingClassifier(random_state=42),
+#         # GaussianProcessClassifier(1.0 * RBF(1.0)),
+#         # DecisionTreeClassifier(random_state=42),
+#         # KNeighborsClassifier(3),
+#         # GradientBoostingClassifier(n_estimators=100, random_state=42),
+#         # SVC(gamma='auto', random_state=42)]
+#         # SVC(kernel="linear", C=0.025, random_state=42)
+#         # QuadraticDiscriminantAnalysis()]
+    
+#     print(f'\nTraining with the following models:\n{names}')
+#     start_time = time.time()
+    
+#     for name, clf in zip(names, classifiers):
+#         m = TicToc()
+#         m.tic()
+#         print(f'\nBegan training {name} model...')
+#         # train model
+#         try:
+#             clf.fit(X_train, Y_train)
+#             print(f'Trained {name} model...')
+                    
+#             #-- accuracy assessment 
+#             acc1 = accuracy_score(Y_test, clf.predict(X_test))*100.0
+#             print (f'--{name} Validation Accuracy= {acc1:.2f} %') 
+#             m.toc()
+            
+#             f = open(log_file, 'a')
+#             f.write(f'\nTraining with the following models:\n{names}')
+#             f.write(f'\nTraining {name} model...')
+#             f.write(f'\n--{name} Validation Accuracy= {acc1}')
+#             f.write('--Total elapsed time: %.3f seconds ---' % (time.time() - start_time))
+#             f.close()
+            
+#             if write_model:
+#                 model_name = model_dir + '\\' + name + '_model_11Band_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+                
+#                 pickle.dump(clf, open(model_name, 'wb')) # save the trained model
+#                 print(f'--Saved trained {name} model to {model_name}\n')
+#                 f = open(log_file, 'a')
+#                 f.write(f'\nSaved trained {name} model to {model_name}')
+#         except:
+#             print(f'****Issue encountered training {name}')
+#             f = open(log_file, 'a')
+#             f.write(f'\n****Issue encountered training {name}')
+#             f.close()
