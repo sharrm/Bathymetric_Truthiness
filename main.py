@@ -21,59 +21,23 @@ full_workflow = True
 # create_rbg_composite = True
 # full_workflow = False
 
-# maskSHP = r"P:\Thesis\Extents\OldOrchard_Extents.shp"
-# directory = r'P:\Thesis\Test Data\OldOrchard'
-# maskSHP = r"P:\Thesis\Extents\Portland_Extents.shp"
-# directory = r'P:\Thesis\Training\Portland'
-# maskSHP = r"P:\Thesis\Extents\KeyLargoExtent.shp"
-# directory = r'P:\Thesis\Training\KeyLargo\_Train'
-# maskSHP = r"P:\Thesis\Extents\FLKeys_Extents.shp"
-# directory = r'P:\Thesis\Test Data\FL Keys'
-# maskSHP = r'P:/Thesis/Extents/Puerto_Real_Extents.shp'
-# directory = r'P:\Thesis\Training\PuertoReal\_Train'
-# maskSHP = r"P:\Thesis\Extents\RockyHarbor_Extents.shp"
-# directory = r'P:\Thesis\Test Data\RockyHarbor'
-# maskSHP = r"P:\Thesis\Extents\GreatLakes.shp"
-# directory = r'P:\Thesis\Test Data\GreatLakes'
-# maskSHP = r"P:\Thesis\Extents\NWHI_Extents.shp"
-# directory = r'P:\Thesis\Test Data\NWHI'
-# maskSHP = r"P:\Thesis\Extents\Halfmoon_Extents.shp"
-# directory = r'P:\Thesis\Test Data\HalfMoon'
-# maskSHP = r"P:\Thesis\Extents\StCroix_Extents.shp"
-# directory = r'P:\Thesis\Test Data\StCroix'
-# directory = r'P:\Thesis\Training\Tampa'
-# maskSHP = r"P:\Thesis\Extents\WakeIsland_Extents.shp"
-# directory = r'P:\Thesis\Test Data\WakeIsland'
 
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\Portland_F.shp"
-
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\KeyLargo_F.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\KeyLargo_TF.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\Halfmoon_T.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\Halfmoon_F_Turbid.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\Halfmoon_F_Deep.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\FLKeys_T.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\FLKeys_F_Turbid.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\FLKeys_F_Deep.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\StCroix_T.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\StCroix_F_Deep.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\PR_TF.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\PR_F_Turbid.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\PR_F_Deep_Noise.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\PR_F_Deep_Clean.shp"
-# maskSHP = r"P:\Thesis\_Monday\_Polygons\NWHI_T.shp"
-maskSHP = r"P:\Thesis\_Monday\_Polygons\NWHI_F_Deep.shp"
-
-
+# directory = r'P:\Thesis\Test Data\TinianSaipan'
 # directory = r"P:\Thesis\Training\KeyLargo"
-# directory = r"P:\Thesis\Training\Halfmoon"
+directory = r"P:\Thesis\Test Data\OldOrchard"
 # directory = r"P:\Thesis\Training\FLKeys"
 # directory = r"P:\Thesis\Training\StCroix"
-# directory = r"P:\Thesis\Training\PuertoReal"
-directory = r"P:\Thesis\Training\NWHI"
+# directory = r"P:\Thesis\Test Data\Puerto Real"
+# directory = r"P:\Thesis\Test Data\GreatLakes"
+# directory = r'P:\Thesis\Test Data\RockyHarbor'
+# directory = r'P:\Thesis\Test Data\TinianSaipan'
+# directory = r'P:\Thesis\Test Data\WakeIsland'
 
-predictor_dir = directory + '\_Monday_11Band'
-composite_name = r"P:\Thesis\_Monday\X_train" + '\\' + os.path.basename(maskSHP).split('.')[0] + '_composite.tif'
+# maskSHP = r"P:\Thesis\Extents\A_Samoa_Airport.shp"
+maskSHP = r"P:\Thesis\Extents\OldOrchard_Extents.shp"
+
+predictor_dir = directory + '\_8Band'
+composite_name = os.path.basename(maskSHP).split('.')[0] + '_composite.tif'
 
 if not os.path.exists(predictor_dir):
     os.makedirs(predictor_dir)
@@ -181,19 +145,19 @@ if full_workflow:
     
     # curvature RichDEM
     # sys.stdout = open(os.devnull, 'w')
-    curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=predictor_dir, out_meta=out_meta)
-    # sys.stdout = sys.__stdout__
-    if curTF:
-        print(f'\nWrote: {pSDBg_curve}')
-    else:
-        print('\nCreating pSDBg curvature failed...')
+    # curTF, pSDBg_curve = sdb.curvature(pSDBg, curvature_name='pSDBg_curvature.tif', output_dir=predictor_dir, out_meta=out_meta)
+    # # sys.stdout = sys.__stdout__
+    # if curTF:
+    #     print(f'\nWrote: {pSDBg_curve}')
+    # else:
+    #     print('\nCreating pSDBg curvature failed...')
     
     # # GDAL Terrain Ruggedness Index (TRI)
     # https://gdal.org/programs/gdaldem.html
     # https://gdal.org/api/python/osgeo.gdal.html
-    triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri_Wilson.tif', output_dir=predictor_dir)
-    if triTF:
-        print(f'\nWrote: {pSDBg_tri}')
+    # triTF, pSDBg_tri = sdb.tri(pSDBg_name, tri_name='pSDBg_tri_Wilson.tif', output_dir=predictor_dir)
+    # if triTF:
+    #     print(f'\nWrote: {pSDBg_tri}')
     
     # # GDAL TPI
     # tpiTF, pSDBg_tpi = sdb.tpi(pSDBg_name, tpi_name='pSDBg_tpi.tif', output_dir=predictor_dir)
@@ -230,7 +194,7 @@ if full_workflow:
     print('\nBuilding compsite image...\n')
     
     # dir_list = [os.path.join(predictor_dir, file) for file in os.listdir(predictor_dir) if file.endswith(".tif") and 'masked' not in file]
-    dir_list = [os.path.join(predictor_dir, file) for file in os.listdir(predictor_dir) if file.endswith(".tif")]
+    dir_list = [os.path.join(predictor_dir, file) for file in os.listdir(predictor_dir) if file.endswith(".tif") and 'pSDBg_slope' not in file]
     
     
     composite_dir = predictor_dir + '\_Composite'

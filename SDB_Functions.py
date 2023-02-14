@@ -11,8 +11,8 @@ import rasterio
 import rasterio.mask
 import richdem as rd
 from osgeo import gdal
-from scipy.ndimage.filters import uniform_filter
-from scipy.ndimage import generic_filter
+from scipy.ndimage import uniform_filter
+# from scipy.ndimage import generic_filter
 from scipy.ndimage import sobel, prewitt
 # from skimage import feature, filters
 # from rasterio import plot
@@ -119,24 +119,24 @@ def slope(pSDB_str, slope_name, output_dir):
     
     return True, slope_output
 
-def stdev(pSDB_str, window, stdev_name, output_dir, out_meta):
-    pSDB_slope = rasterio.open(pSDB_str).read(1)
-    pSDB_slope[pSDB_slope == -9999.] = 0. # be careful of no data values
+# def stdev(pSDB_str, window, stdev_name, output_dir, out_meta):
+#     pSDB_slope = rasterio.open(pSDB_str).read(1)
+#     pSDB_slope[pSDB_slope == -9999.] = 0. # be careful of no data values
     
-    print(f'Computing standard deviation of slope within a {window} window...')
+#     print(f'Computing standard deviation of slope within a {window} window...')
     
-    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generic_filter.html
-    std = generic_filter(pSDB_slope, np.std, size=window)
+#     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generic_filter.html
+#     std = generic_filter(pSDB_slope, np.std, size=window)
        
-    stdev_output = os.path.join(output_dir, stdev_name)
+#     stdev_output = os.path.join(output_dir, stdev_name)
     
-    with rasterio.open(stdev_output, "w", **out_meta) as dest:
-        dest.write(std, 1)
+#     with rasterio.open(stdev_output, "w", **out_meta) as dest:
+#         dest.write(std, 1)
     
-    pSDB_slope = None
-    dest = None
+#     pSDB_slope = None
+#     dest = None
     
-    return True, stdev_output
+#     return True, stdev_output
     
 
 # from: https://stackoverflow.com/questions/18419871/improving-code-efficiency-standard-deviation-on-sliding-windows
@@ -182,7 +182,7 @@ def curvature(pSDB, curvature_name, output_dir, out_meta):
 
 def tri(pSDB_str, tri_name, output_dir):
     tri_output = os.path.join(output_dir, tri_name)
-    gdal.DEMProcessing(tri_output, pSDB_str, 'TRI') # writes directly to file
+    gdal.DEMProcessing(tri_output, pSDB_str, 'TRI', options=gdal.DEMProcessingOptions(alg='Wilson')) # writes directly to file
     
     return True, tri_output
 
@@ -209,12 +209,18 @@ def roughness(pSDB_str, roughness_name, output_dir):
 #     return True, canny_output
 
 def sobel_filt(pSDB, sobel_name, output_dir, out_meta):
-    sobel_edges = sobel(pSDB)
+    
+    sobel_input = rasterio.open(pSDB).read(1)
+    
+    sobel_edges = sobel(sobel_input)
     sobel_output = os.path.join(output_dir, sobel_name)
     
     # write sobel edges to file
     with rasterio.open(sobel_output, "w", **out_meta) as dest:
         dest.write(sobel_edges, 1)
+        
+    sobel_input = None
+    dest = None
     
     return True, sobel_output, sobel_edges
 
@@ -265,6 +271,7 @@ def composite(dir_list, output_composite):
                       "height": comp.shape[1],
                       "width": comp.shape[2],
                       "count": comp.shape[0],
+                      "nodata": 0,
                       # 'compress': 'lzw',
                       "transform": out_transform})
     
@@ -273,7 +280,7 @@ def composite(dir_list, output_composite):
 
     dest = None
         
-    return True, output_composite
+    return True, output_composite, comp.shape[0]
 
 
 # %% -

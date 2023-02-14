@@ -14,15 +14,15 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
-from torch import tensor
+# from torch import tensor
 # from torchmetrics import JaccardIndex
-from torchmetrics.classification import MulticlassJaccardIndex
+# from torchmetrics.classification import MulticlassJaccardIndex
 import rasterio
 from pytictoc import TicToc
 from scipy.ndimage import median_filter, gaussian_filter
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, AdaBoostClassifier
-from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
-from sklearn.metrics import accuracy_score, ConfusionMatrixDisplay, classification_report
+# from sklearn.metrics import  f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, classification_report, jaccard_score
 from sklearn.model_selection import cross_val_score
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
@@ -52,16 +52,14 @@ feature_list = ["w492nm",               #1
                 "w665nm",               #3  
                 "w833nm",               #4
                 "pSDBg",                #5
-                # "pSDBg_curvature",      #6
-                "pSDBg_roughness",      #7  
-                # "pSGBg_slope",          #8
-                "pSDBg_stdev_slope",    #9
-                # "pSDBg_tri_Wilson",     #10
-                "pSDBr"]                #11
+                "pSDBg_roughness",      #6  
+                "pSDBg_stdev_slope",    #7
+                "pSDBr"]                #8
+
 
 # labels = {0: 'No Data', 1: 'False', 2:'True'}
 tf_labels = {0: 'No Data', 1: 'False', 2: 'True'}
-iou_labels = {0: 'No Data', 2: 'False Agreement', 3: 'Disagreement', 4: 'True Agreement'}
+iou_labels = {0: 'No Data', 2: 'False Agreement', 3: 'Underestimate', 4: 'True Agreement', 5: 'Overestimate'}
 
 tf_cmap = {0:[225/255, 245/255, 255/255, 1],
            1:[225/255, 175/255, 0/255, 1],
@@ -69,9 +67,10 @@ tf_cmap = {0:[225/255, 245/255, 255/255, 1],
 
 iou_cmap = {0:[0/255, 0/255, 0/255, 1],
             2:[225/255, 175/255, 0/255, 1],
-            3:[75/255, 100/255, 255/255, 1],
-            4:[75/255, 180/255, 210/255, 1]}
-#         5:[0/255, 255/255, 100/255, 1]
+            3:[75/255, 180/255, 210/255, 1],
+            4:[75/255, 130/255, 0/255, 1],
+            5:[170/255, 50/255, 90/255, 1]}
+
 
 # %% - case
 
@@ -81,50 +80,44 @@ train = False
 predict = True
 
 # 8 band
-flkeys_composite = r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif"
-keylargo_composite = r"P:\Thesis\Training\KeyLargo\_8Band\_Composite\KeyLargoExtent_composite.tif"
-stcroix_composite = r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif"
-
-flkeys_training_mask = r"P:\Thesis\Samples\Raster\FLKeys_Training.tif"
-keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif"
-stcroix_training_mask = r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif"
-# keylargo_training_mask = r"P:\Thesis\Samples\Raster\KeyLargo_Multiclass_Training.tif"
-# stcroix_training_mask = r"P:\Thesis\Samples\Raster\StCroix_Multiclass_Training.tif"
-
-# composite_rasters = [flkeys_composite, keylargo_composite, stcroix_composite]
-# training_rasters = [flkeys_training_mask, keylargo_training_mask, stcroix_training_mask]
-
 composite_rasters = [r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif",
-                    # r"P:\Thesis\Training\KeyLargo\_8Band\_Composite\KeyLargoExtent_composite.tif",
                     r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif",
-                    r"P:\Thesis\Training\FLKeys\_8Band_Deep\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+                    r"P:\Thesis\Training\FLKeys\_8Band_DeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
                     r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_composite.tif"
                     ]
 
 training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
-                    # r"P:\Thesis\Samples\Raster\KeyLargoExtent_Training.tif",
                     r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
                     r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
                     r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
                     ]
+
+# composite_rasters = [r'P:\Thesis\Training\FLKeys\_10Band\_Composite\FLKeys_Training_composite.tif',
+#                      r"P:\Thesis\Training\FLKeys\_10BandDeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                      r'P:\Thesis\Training\StCroix\_10Band\_Composite\StCroix_Extents_composite.tif',
+#                      r'P:\Thesis\Training\Ponce\_10Band\_Composite\Ponce_Obvious_composite.tif'
+#                      ]
+
+# training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
+#                     r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
+#                     r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
+#                     r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
+#                     ]
+
 
 if len(composite_rasters) != len(training_rasters):
     print('Unequal number of composites and validated training data...')
     sys.exit()
 
 # training ------------
-# prepare = True
-prepare = False
-single = True
 # n_models = True
 n_models = False
 RF = True
 # RF = False
-# kfold = True
-kfold = False
+kfold = True
+# kfold = False
 write_model = True
 # write_model = False
-# stdevs = 3
 model_dir = r'P:\Thesis\Models'
 # model_dir = r"C:\_Thesis\_Monday\Models"
 model_name = model_dir + '\RF_8Band_4Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
@@ -139,19 +132,25 @@ if predict:
     # predict_raster = r"P:\Thesis\Test Data\A_Samoa\_8Band\_Composite\A_Samoa_Airport_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\A_Samoa_2019\_8Band\_Composite\A_Samoa_Airport_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\A_Samoa_2019\_8Band\_Composite\A_Samoa_Harbor_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\NWHI\_8Band\_Composite\NWHI_Extents_composite.tif"
+    predict_raster = r"P:\Thesis\Test Data\NWHI\_8Band\_Composite\NWHI_Extents_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_8Band\_Composite\GreatLakes_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\HalfMoon\_8Band_DryTortugas\_Composite\DryTortugas_Extents_composite.tif"
     
-    predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band_MaskChk\_Composite\Saipan_Mask_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band_MaskChk\_Composite\Saipan_Mask_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
-    # o_model = r"P:\Thesis\Models\RF_8Band_5Masks_20230210_0731.pkl"
-    o_model = r"P:\Thesis\Models\RF_8Band_4Masks_20230210_0740.pkl"
+    # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_8Band\_Composite\RockyHarbor_Extents_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_10Band\_Composite\Puerto_Real_Smaller_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_10Band\_Composite\Saipan_Extents_composite.tif"
+    o_model = r"P:\Thesis\Models\RF_8Band_4Masks_20230213_1545.pkl"
+    # o_model = r"P:\Thesis\Models\RF_8Band_4Masks_20230210_0740.pkl"
+    # o_model = r"P:\Thesis\Models\MLP_10Band_4Masks_20230213_1344.pkl"
+    # o_model = r'P:\Thesis\Models\Hist_10Band_4Masks_20230213_1343.pkl'
     use_models = r"P:\Thesis\Models\RandomForest"
 
     # IOU metrics
-    Perform_IOU = True # intersection over union
-    use_torchmetrics = False
+    Perform_IOU = False # intersection over union
+    # use_torchmetrics = False
+    # Perform_IOU = True # intersection over union
     # test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
     test_mask = r"P:\Thesis\Masks\Saipan_Mask_TF.tif"
 
@@ -180,8 +179,9 @@ def iou_colorMap(data):
     rgba = np.zeros((data.shape[0],data.shape[1],4))
     rgba[data==0, :] = [0/255, 0/255, 0/255, 1] # unclassified 
     rgba[data==2, :] = [225/255, 175/255, 0/255, 1]
-    rgba[data==3, :] = [170/255, 50/255, 90/255, 1]
-    rgba[data==4, :] = [75/255, 180/255, 210/255, 1]
+    rgba[data==3, :] = [75/255, 180/255, 210/255, 1]
+    rgba[data==4, :] = [75/255, 130/255, 0/255, 1]
+    rgba[data==5, :] = [170/255, 50/255, 90/255, 1]
     return rgba
 
 def correlation_matrix(correlation):
@@ -220,7 +220,7 @@ def log_output(in_string):
 
 
 # %% - prepare training data
-if prepare:
+if train:
     all_predictors = []
     
     # add check for extents matching
@@ -278,7 +278,7 @@ if prepare:
     print('\nSplitting data into training and testing...')
     # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html
 
-    X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, test_size=0.3, random_state=42)
     print('\nPrepared training data...')
     
     print(f'\nX_train pixels: {x_train.size:,}\nY_train pixels: {y_train.size:,}')
@@ -300,21 +300,19 @@ if prepare:
                    f'\nY_train + Y_test (row check): {Y_train.shape[0] + Y_test.shape[0]}'
                    f'\n--Verified number of rows in training data correct.'
                    f'\n')
-
         
 
-# %% - train/predict
+# %% - training
 
 # https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html
 
-if train and single:
+if train:
     # train random forest model
     start_time = time.time()
-    # https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
-    # model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1, oob_score=True)
+    # https://scikit-learn.org/stable/modules/classes.html#module-sklearn.ensemble
     # model = MLPClassifier(max_iter=1000, random_state=42, activation='relu', solver='adam')
-    # model = HistGradientBoostingClassifier(random_state=42)
-    model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=-1, oob_score=True)
+    # model = HistGradientBoostingClassifier(loss='categorical_crossentropy', random_state=42)
+    model = RandomForestClassifier(n_estimators = 200, random_state = 42, n_jobs=-1, oob_score=True)
                                     # max_depth=3, min_samples_leaf=10, min_samples_split=9)
     
     # print('\nStarted randomized search on hyper parameters...')
@@ -334,12 +332,12 @@ if train and single:
     # search.best_params_ 
     
     if kfold:
-        print('\n--Performing k-fold cross validation...')
+        print('\nPerforming k-fold cross validation...')
         log_output('\n--Performing k-fold cross validation...')
         
-        scores = cross_val_score(model, x_train, y_train, cv=5)
-        print(f'\nk-fold cross validation results:\n{scores}')
-        print("\n%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
+        scores = cross_val_score(model, x_train, y_train, cv=5, n_jobs=-1)
+        print(f'\n--k-fold cross validation results:\n{scores}')
+        print("\n--%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
         log_output(f'\nk-fold cross validation results:\n{scores}'
                    f'\n{scores.mean():.2f} accuracy with a standard deviation of {scores.std():.2f}')
             
@@ -350,13 +348,15 @@ if train and single:
     log_output(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
     
     #-- accuracy assessment
-    print('\nAssessing accuracy...')    
-    oob_error = 1 - model.oob_score_
-    print(f'\nOOB Error: {oob_error}')
+    print('\nAssessing accuracy...') 
+    
+    if RF:
+        oob_error = 1 - model.oob_score_
+        print(f'\n--OOB Error: {oob_error}')
     
     print('\nComputing Precision, Recall, F1...')
     classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
-    print(f'Classification Report:\n{classification}')
+    print(f'--Classification Report:\n{classification}')
 
     # prec_recall_f1 = precision_recall_fscore_support(Y_test, model.predict(X_test))
     # print(f'--Precision, Recall, F1:\n{prec_recall_f1}')
@@ -404,6 +404,7 @@ if train and single:
         pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
         print(f'\nSaved model: {model_name}\n')
 
+# %% - prediction
 
 if predict:
     #-- Every cell location in a raster has a value assigned to it. 
@@ -516,21 +517,23 @@ if predict:
     # # 11:10:45 From  Michael Olsen  to  Everyone:
     # # 	https://www.esri.com/training/catalog/5eb18cf2a7a78b65b7e26134/deep-learning-using-arcgis/
 
-# %% - IOU
-
+    # intersection over union
     if Perform_IOU:
         print('Performing intersection over union analysis...')
         bandmask = rasterio.open(test_mask).read(1)
-        if use_torchmetrics:
-            target = tensor(bandmask)
-            preds = tensor(im_predicted)
-            metric = MulticlassJaccardIndex(num_classes=3) # https://torchmetrics.readthedocs.io/en/stable/classification/jaccard_index.html
-            metric(preds, target)
-            print(f'IOU: {metric(preds, target)}')
+        iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
+        print(f'IOU: {iou_score:.3f}')
         
-        differences = bandmask + im_predicted
+        differences = np.where(bandmask < median_filter(im_predicted,size=3), 5, bandmask + im_predicted)
+        differences = np.where(bandmask > median_filter(im_predicted,size=3), 3, differences)
         plot_title = 'IOU'
         plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
+        
+        # method in pytorch
+        # target = tensor(bandmask)
+        # preds = tensor(median_filter(im_predicted,size=3))
+        # metric = MulticlassJaccardIndex(num_classes=3) # https://torchmetrics.readthedocs.io/en/stable/classification/jaccard_index.html
+        # metric(preds, target)
         
         # method in keras with working environment
         # print('Performing intersection over union analysis...')
