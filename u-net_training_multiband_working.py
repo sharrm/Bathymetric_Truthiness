@@ -6,6 +6,8 @@ Last updated Nov/03/2022
 @ modified by: Jaehoon Jung, PhD, OSU
 
 Semantic segmentation using U-Net architecture (training)
+
+Modified by Matt Sharr
 """
 
 import numpy as np
@@ -127,18 +129,36 @@ n_classes = 3 #-- number of classes for segmentation (road markings, road surfac
 s_patch = 128 #-- patch size # 128
 s_step = 64 #-- step size, use smaller step size for overlap # 64
 s_batch = 16 # batch size
-eps = 50 # epochs
+eps = 150 # epochs
 
 # %% - data
-composite_rasters = [r'P:\Thesis\Training\FLKeys\_10Band\_Composite\FLKeys_Training_composite.tif',
-                     r"P:\Thesis\Training\FLKeys\_10BandDeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-                     r'P:\Thesis\Training\StCroix\_10Band\_Composite\StCroix_Extents_composite.tif',
-                     r'P:\Thesis\Training\Ponce\_10Band\_Composite\Ponce_Obvious_composite.tif'
-                     ]
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_8Band_DeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
+
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_7Band\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_7Band\_Composite\StCroix_Extents_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_7Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_7Band\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
+
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_6Band\_Composite\StCroix_Extents_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_6Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_6Band\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
+
+composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness\_Composite\FLKeys_Training_composite.tif",
+                    r"P:\Thesis\Training\StCroix\_6Band_pSDB_roughness\_Composite\StCroix_Extents_composite.tif",
+                    r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+                    r"P:\Thesis\Training\Ponce\_6Band_pSDB_roughness\_Composite\Ponce_Obvious_composite.tif"
+                    ]
 
 training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
-                    r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
                     r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
+                    r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
                     r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
                     ]
 
@@ -189,7 +209,7 @@ all_masks = np.vstack(all_masks_list)
 # %% training 
 #-- split training data
 # X_train, X_test, Y_train, Y_test = train_test_split(patches, mask, test_size = 0.2)
-X_train, X_test, Y_train, Y_test = train_test_split(all_patches, all_masks, test_size = 0.2)
+X_train, X_test, Y_train, Y_test = train_test_split(all_patches, all_masks, test_size = 0.3)
 #-- one-hot encoding
 #-- deep learning reads a higher number as more important than a lower number
 #-- this can lead to issues if data do not have any ranking for category values
@@ -215,7 +235,7 @@ history = model.fit(X_train, Y_train_cat,
 print("\n--- %.3f seconds ---\n" % (time.time() - start_time))
 #-- save the model for future use
 current_time = datetime.datetime.now()
-model_name = r'P:\Thesis\Models\UNet\Unet_model_10bands_150img' + current_time.strftime('%Y%m%d_%H%M') + '.hdf5'
+model_name = r'P:\Thesis\Models\UNet\UNet_6bands_pSDBrough_150epoch_128patchX64step_' + current_time.strftime('%Y%m%d_%H%M') + '.hdf5'
 model.save(model_name)
 #-- plot the training and validation accuracy and loss at each epoch
 #-- note that your results may vary given the stochastic nature of the algorithm
@@ -224,7 +244,7 @@ plotAccuracy(history.history['loss'], history.history['accuracy'], 'Training ')
 plotAccuracy(history.history['val_loss'], history.history['val_accuracy'], 'Validation ')
 
 print(f'patches: {s_patch}\nstep: {s_step}\nbatch size: {s_batch}')
-
+print(f'\nSaved U-Net model here: {model_name}')
 
 
 # %% original code pieces

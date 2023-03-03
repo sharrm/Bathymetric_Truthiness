@@ -7,16 +7,21 @@ Last updated Nov/03/2022
 
 Semantic segmentation using U-Net architecture (prediction)
 
-@ modified by Matt Sharr
+Modified by Matt Sharr
 """
 
-from patchify import patchify, unpatchify
-
-import numpy as np
-import tifffile as tiff
-from matplotlib import pyplot as plt
+import datetime
 import keras
+from matplotlib import pyplot as plt
+import numpy as np
+import os
+from osgeo import gdal
+from patchify import patchify, unpatchify
+# import tifffile as tiff
+import time
 
+
+# %% - functions
 
 def plotPatches(im,row):
     plt.figure(figsize=(9, 9))
@@ -70,14 +75,84 @@ def plotImage(zi,t_cmap, filename):
 def scaleData(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
+def saveGTiff(im,gt,proj,i_ft,fileName):   
+    driver = gdal.GetDriverByName("GTiff")
+    driver.Register()
+    outds = driver.Create(fileName, 
+                          xsize = im.shape[1],
+                          ysize = im.shape[0], 
+                          bands = 1, 
+                          eType = gdal.GDT_UInt16
+                          )
+    outds.SetGeoTransform(gt)
+    outds.SetProjection(proj)
+    outds.GetRasterBand(i_ft).WriteArray(im)
+    outds.GetRasterBand(i_ft).SetNoDataValue(0) # np.nan
+    outds.FlushCache()
+    outds = None
+
 # %% hyper parameters
 s_patch = 128
-s_step = 128
-n_classes = 3
+s_step = 64
+
+
+# %% - options
+# write_prediction = True
+write_prediction = False
+
+# 7 bands
+# predict_raster = r"P:\Thesis\Training\PuertoReal\_7Band\_Composite\Puerto_Real_Smaller_composite.tif"
+# predict_raster = r"P:\Thesis\Test Data\GreatLakes\_7Band_NoLand\_Composite\GreatLakes_Mask_NoLand_composite.tif"
+# predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_composite.tif"
+# predict_raster = r"P:\Thesis\Test Data\Niihua\_7Band\_Composite\Niihua_Mask_composite.tif"
+
+# input_model = r'P:\Thesis\Models\UNet\UNet_model_7bands_150epoch_128patchX64step20230228_1428.hdf5'
+
+# 8 bands
+# predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
+# predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
+# predict_raster = r'P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_composite.tif'
+
+# input_model = r'P:\Thesis\Models\UNet\UNet_model_8bands_150epoch_128patchX64step_20230228_1514.hdf5'
+
+# predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band\_Composite\Saipan_Extents_NoIsland_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band\_Composite\Niihua_Mask_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band\_Composite\Puerto_Real_Smaller_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band\_Composite\GreatLakes_Mask_NoLand_composite.tif'
+
+# input_model = r'P:\Thesis\Models\UNet\UNet_model_6bands_150epoch_128patchX64step_20230228_1624.hdf5'
+
+# predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band_pSDB_roughness\_Composite\Saipan_Extents_NoIsland_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band_pSDB_roughness\_Composite\Niihua_Mask_composite.tif'
+# predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band_pSDB_roughness\_Composite\Puerto_Real_Smaller_composite.tif'
+predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band_pSDB_roughness\_Composite\GreatLakes_Mask_NoLand_composite.tif'
+
+input_model = r'P:\Thesis\Models\UNet\UNet_6bands_pSDBrough_150epoch_128patchX64step_20230228_1754.hdf5'
+
+# IOU = False
+IOU = True
+
+# test_mask = r"P:\Thesis\Masks\Saipan_Mask_TF.tif"
+# test_mask = r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
+# test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
+test_mask = r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif"
 
 # %% load data and model
-# o_image = tiff.imread(r"P:\Thesis\Test Data\Puerto Real\_10Band\_Composite\Puerto_Real_Smaller_composite.tif")
-o_image = tiff.imread(r"P:\Thesis\Test Data\TinianSaipan\_10Band\_Composite\Saipan_Extents_composite.tif")
+start_time = time.time()
+print(f'Predicting on: {predict_raster}')
+print(f'Using model: {input_model}')
+
+o_image = gdal.Open(predict_raster)
+
+#-- affine trasform coefficients 
+gt = o_image.GetGeoTransform()
+#-- projection of raster data
+proj = o_image.GetProjection()
+
+o_image = o_image.ReadAsArray().transpose((1,2,0))
+
+print(f'\nInput image shape: {o_image.shape}')
 
 o_image = np.nan_to_num(o_image)
 o_image[o_image == -9999] = 0
@@ -93,8 +168,10 @@ for i in range(0, np.shape(image)[2]):
 image, h, w = padding3D(image,s_patch)
 # image, h, w = padding(image,s_patch)
 
+print(f'Padded image shape: {image.shape}')
+
 # Trained U-Net model
-model = keras.models.load_model(r"P:\Thesis\Models\UNet\Unet_model_10bands_128step20230213_1431.hdf5", compile=False)
+model = keras.models.load_model(input_model, compile=False)
 
 # %% prediction, patch by patch 
 # patches = patchify(image, (s_patch, s_patch), step = s_step)#-- split image into small patches with overlap  
@@ -103,12 +180,14 @@ patches = patchify(image, (s_patch, s_patch, image.shape[2]), step=s_step)
 row, col, dep, hi, wi, d = patches.shape
 patches = patches.reshape(row*col*dep, hi, wi, d)  
 
-# o image size: (1734, 1730, 10)
-# image size: (1792, 1792, 10)
+print(f'Number of patches: {patches.shape[0]}')
+
+print('\nPredicting...')
 
 patches_predicted = [] # store predicted images (196,128,128)
 for i in range(patches.shape[0]): # loop through all patches
-    print("Now predicting on patch: ", i)
+    if not i % 100:
+        print("Now predicting on patch: ", i)
     patch1 = patches[i,:,:,:] # all rows, cols, dep of each patch (128,128,10)
     patch1 = np.expand_dims(np.array(patch1), axis=[0]) # expand first dimension to fit into model (1,128,128,10)
     patch1_prediction = model.predict(patch1) # predict on patch (1,128,128,3)
@@ -125,6 +204,8 @@ image_predicted = image_predicted[:h,:w] #-- recover original image size
 # plotImage(o_image[0:2],'Greys_r', 'Original')
 plotImage(image_predicted,'viridis', 'Classified')
 
+print(f'\n--Completed U-Net prediction on {patches.shape[0]} patches in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+
 # classified image vs point cloud intensity
 
 # patches_predicted_reshaped = np.reshape(patches_predicted, (image.shape[0], -1))
@@ -136,6 +217,35 @@ plotImage(image_predicted,'viridis', 'Classified')
 # output_height = image_height - (image_height - s_patch) % s_step # [1734 - (1734 - 128) % 128] = 1664
 # output_width = image_width - (image_width - s_patch) % s_step # [1730 - (1730 - 128) % 128] = 1664
 # output_shape = (output_height, output_width) # (1664, 1664, 10)
+
+if IOU:
+    print('Performing intersection over union analysis...')
+    # bandmask = tiff.imread(test_mask)
+    bandmask = gdal.Open(test_mask).ReadAsArray()
+    truth = np.nan_to_num(bandmask)
+    truth[truth == -9999] = 0
+    
+    prediction1 = np.reshape(image_predicted, (image_predicted.shape[0] * image_predicted.shape[1]))
+    truth1 = np.reshape(truth, (truth.shape[0] * truth.shape[1]))
+    m = keras.metrics.MeanIoU(num_classes=3)
+    m.update_state(truth1, prediction1)
+    print('\--Mean IOU:', m.result().numpy())
+
+
+# %% - Save output
+
+if write_prediction:
+    current_time = datetime.datetime.now()
+    prediction_path = os.path.abspath(os.path.join(os.path.dirname(predict_raster), '..', '_UNet_Prediction'))
+    
+    if not os.path.exists(prediction_path):
+        os.makedirs(prediction_path)
+    
+    prediction_path = prediction_path + '\\' + os.path.basename(predict_raster).replace('composite.tif', 'prediction_') + current_time.strftime('%Y%m%d_%H%M') + '.tif'
+    
+    saveGTiff(image_predicted.astype(np.uint8), gt, proj, 1, prediction_path)
+    
+    print(f'\nWrote prediction to {prediction_path}')
 
 #%%
 
@@ -180,7 +290,16 @@ plotImage(image_predicted,'viridis', 'Classified')
 # output_shape = (output_height, output_width, channel_count) # (1664, 1664, 10)
 # output_image = unpatchify(output_patches, output_shape) 
 
-
+# o_image = tiff.imread(r"P:\Thesis\Test Data\Puerto Real\_10Band\_Composite\Puerto_Real_Smaller_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\TinianSaipan\_10Band\_Composite\Saipan_Extents_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\TinianSaipan\_8Band_MaskChk\_Composite\Saipan_Mask_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\NWHI\_8Band\_Composite\NWHI_Extents_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Training\PuertoReal\_7Band\_Composite\Puerto_Real_Smaller_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\GreatLakes\_7Band_NoLand\_Composite\GreatLakes_Mask_NoLand_composite.tif")
+# o_image = tiff.imread(r"P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_composite.tif")
+# o_image = tiff.imread(r'P:\Thesis\Test Data\A_Samoa\_7Band\_Composite\A_Samoa_Harbor_composite.tif')
+# o_image = tiff.imread(r"P:\Thesis\Test Data\Niihua\_7Band\_Composite\Niihua_Mask_composite.tif")
 
 
 
