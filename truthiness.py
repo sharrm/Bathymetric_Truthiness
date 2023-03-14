@@ -20,11 +20,11 @@ import pickle
 import rasterio
 from pytictoc import TicToc
 from scipy.ndimage import median_filter #, gaussian_filter
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, AdaBoostClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, ExtraTreesClassifier # AdaBoostClassifier, 
 # from sklearn.metrics import  f1_score, precision_score, recall_score
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, classification_report, jaccard_score
 from sklearn.model_selection import cross_val_score, learning_curve, StratifiedKFold
-# from sklearn.neural_network import MLPClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
 import sys
 import time
@@ -47,32 +47,39 @@ log_file = r"P:\Thesis\Test Data\_Logs\Log_" + current_time.strftime('%Y%m%d_%H%
 upper_limit = np.finfo(np.float32).max/10
 lower_limit = np.finfo(np.float32).min/10
 
-# feature_list = ["w492nm",               #1
-#                 "w560nm",               #2   
-#                 "w665nm",               #3  
-#                 "w833nm",               #4
-#                 "pSDBg",                #5
-#                 "pSDBg_roughness",      #6  
-#                 "pSDBg_stdev_slope",    #7
-#                 "pSDBr"]                #8
-
-# feature_list = ["w492nm",               #1
-#                 "w560nm",               #2   
-#                 "w665nm",               #3  
-#                 "w833nm"]
-
 feature_list = ["w492nm",               #1
                 "w560nm",               #2   
                 "w665nm",               #3  
                 "w833nm",               #4
                 "pSDBg",                #5
                 "pSDBg_roughness",      #6  
-                "pSDBg_stdev_slope"]    #7
+                "pSDBg_stdev_slope",    #7
+                "pSDBr"]                #8
 
+# feature_list = ["w492nm",               #1
+#                 "w560nm",               #2   
+#                 "w665nm",               #3  
+#                 "w833nm"]
+
+# feature_list = ["w492nm",               #1
+#                 "w560nm",               #2   
+#                 #"w665nm",               #3  
+#                 "w833nm",               #4
+#                 "pSDBg",                #5
+#                 "pSDBg_roughness",      #6  
+#                 "pSDBg_stdev_slope"]    #7
+
+# feature_list = ['pSDBg',
+#                 'pSDBg_roughness',
+#                 'pSDBg_stdevslope',
+#                 'pSDBr',
+#                 'pSDBr_roughness',
+#                 'pSDBr_stdevslope'
+#                 ]
 
 # labels = {0: 'No Data', 1: 'False', 2:'True'}
 tf_labels = {0: 'No Data', 1: 'False', 2: 'True'}
-iou_labels = {0: 'No Data', 2: 'False Agreement', 3: 'Underestimate', 4: 'True Agreement', 5: 'Overestimate'}
+iou_labels = {0: 'No Data', 2: 'True Negative', 3: 'False Negative', 4: 'True Positive', 5: 'False Positive'}
 
 tf_cmap = {0:[225/255, 245/255, 255/255, 1],
            1:[225/255, 175/255, 0/255, 1],
@@ -87,54 +94,78 @@ iou_cmap = {0:[0/255, 0/255, 0/255, 1],
 
 # %% - case
 
-# 7 band
-composite_rasters = [r"P:\Thesis\Training\FLKeys\_7Band\_Composite\FLKeys_Training_composite.tif",
-                    r"P:\Thesis\Training\StCroix\_7Band\_Composite\StCroix_Extents_composite.tif",
-                    r"P:\Thesis\Training\FLKeys\_7Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-                    r"P:\Thesis\Training\Ponce\_7Band\_Composite\Ponce_Obvious_composite.tif",
-                    r"P:\Thesis\Training\GreatLakes\_7Band\_Composite\GreatLakes_Mask_composite.tif",
-                    r"P:\Thesis\Training\PuertoReal\_7Band\_Composite\Puerto_Real_Smaller_composite.tif",
-                    r"P:\Thesis\Training\Saipan\_7Band\_Composite\Saipan_Extents_composite.tif"
+composite_rasters = [r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif",
+                    r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif",
+                    r"P:\Thesis\Training\FLKeys\_8Band_DeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+                    r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_composite.tif"
+                    # r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Extents_NoIsland_composite.tif",
+                    # r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif",
+                    # r'P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_composite.tif',
+                    # r'P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_composite.tif'
                     ]
+
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_7Band\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_7Band\_Composite\StCroix_Extents_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_7Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_7Band\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
+
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_6Band\_Composite\StCroix_Extents_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_6Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_6Band\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
+
+# composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness\_Composite\FLKeys_Training_composite.tif",
+#                     r"P:\Thesis\Training\StCroix\_6Band_pSDB_roughness\_Composite\StCroix_Extents_composite.tif",
+#                     r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
+#                     r"P:\Thesis\Training\Ponce\_6Band_pSDB_roughness\_Composite\Ponce_Obvious_composite.tif"
+#                     ]
 
 training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
                     r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
                     r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
-                    r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif",
-                    r"P:\Thesis\Samples\Raster\GreatLakes_Mask_TF.tif",
-                    r"P:\Thesis\Samples\Raster\PuertoReal_Mask_TF.tif",
-                    r"P:\Thesis\Samples\Raster\Saipan_Mask_TF.tif"
+                    r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
+                    # r'P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif',
+                    # r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
+                    # r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif",
+                    # r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
                     ]
-
 
 if len(composite_rasters) != len(training_rasters):
     print('Unequal number of composites and validated training data...')
     sys.exit()
 
 # train - test ------------
-# train = True
+train = True
 predict = False
-train = False
+# train = False
 # predict = True
+# final_model = True
+final_model = False
+
+# analysis
+# Perform_IOU = False # intersection over union
+Perform_IOU = True # intersection over union
 
 n_jobs = 6
 
 # assessment --------------
 # kfold = True
 kfold = False
-plot_learning_curve = True
-# plot_learning_curve = False
+# plot_learning_curve = True
+plot_learning_curve = False
 
 # training ----------------
 # n_models = True
 n_models = False
-# write_model = True
-write_model = False
-RF = True
-# RF = False 
+write_model = True
+# write_model = False
+# RF = True
+RF = False 
 model_dir = r'P:\Thesis\Models'
 # model_dir = r"C:\_Thesis\_Monday\Models"
-model_name = model_dir + '\RF_8Band_4Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+model_name = model_dir + '\RF_8Band_50Trees_4Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
 
 # add logging
 
@@ -150,23 +181,39 @@ if predict:
     # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_8Band\_Composite\GreatLakes_composite.tif"
     # predict_raster = r"P:\Thesis\Test Data\HalfMoon\_8Band_DryTortugas\_Composite\DryTortugas_Extents_composite.tif"
     
-    # predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_composite.tif"
-    predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\RockyHarbor\_8Band\_Composite\RockyHarbor_Extents_composite.tif"
-    # predict_raster = r"P:\Thesis\Test Data\KeyLargo\_8Band\_Composite\KeyLargoExtent_composite.tif"
+    predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
+    # predict_raster = r'P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_composite.tif'
     # predict_raster = r"P:\Thesis\Test Data\Niihua\_8Band_6\_Composite\Niihua6_composite.tif"
-    # predict_raster = r'P:\Thesis\Test Data\Moorehead\_8Band_4\_Composite\Moorehead4_Extents_composite.tif'
+    # predict_raster = r"P:\Thesis\Training\PuertoReal\_7Band\_Composite\Puerto_Real_Smaller_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\GreatLakes\_7Band_NoLand\_Composite\GreatLakes_Mask_NoLand_composite.tif"
+    # predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
+    # predict_raster = r'P:\Thesis\Test Data\A_Samoa\_7Band\_Composite\A_Samoa_Harbor_composite.tif'
+    # predict_raster = r"P:\Thesis\Test Data\Niihua\_7Band\_Composite\Niihua_Mask_composite.tif"
+    # predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band\_Composite\Saipan_Extents_NoIsland_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band\_Composite\Niihua_Mask_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band\_Composite\Puerto_Real_Smaller_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band\_Composite\GreatLakes_Mask_NoLand_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band_pSDB_roughness\_Composite\Saipan_Extents_NoIsland_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band_pSDB_roughness\_Composite\Niihua_Mask_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band_pSDB_roughness\_Composite\Puerto_Real_Smaller_composite.tif'
+    # predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band_pSDB_roughness\_Composite\GreatLakes_Mask_NoLand_composite.tif'
     # o_model = r"P:\Thesis\Models\RF_8Band_4Masks_20230213_1545.pkl"
     # o_model = r"P:\Thesis\Models\RF_4Band_4Masks_20230222_1305.pkl"
-    o_model = r'P:\Thesis\Models\Ada_8Band_4Masks_20230223_1112.pkl' # adaboost
-    # o_model = r'P:\Thesis\Models\HistGradBoost_8Band_4Masks_20230223_1132.pkl' # hist gradient boost
+    # o_model = r"P:\Thesis\Models\RF_7Band_4Masks_20230228_1032.pkl"
+    # o_model = r'P:\Thesis\Models\RF_6Band_4Masks_20230228_1532.pkl'
+    # o_model = r"P:\Thesis\Models\Random Forest_8Band_2000Trees_4Masks_20230303_0955.pkl"
+    # o_model = r"P:\Thesis\Models\Hist Gradient Boosted_8Band_4Masks_20230303_1052.pkl"
+    # o_model = r"P:\Thesis\Models\MLP_8Band_4Masks_20230303_1052.pkl"
+    o_model = r"P:\Thesis\Models\Final_ALL_DATA_RF_8Band_200Trees_4Masks.pkl"
     use_models = r"P:\Thesis\Models\RandomForest"
 
     # IOU metrics
-    # Perform_IOU = False # intersection over union
-    Perform_IOU = True # intersection over union
-    test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
-    # test_mask = r"P:\Thesis\Masks\Saipan_Mask_TF.tif"
+    test_mask = r'P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif'
+    # test_mask = r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
+    # test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
+    # test_mask = r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif"
     
     # Post-Processing
     # median_filter_tf = True
@@ -181,8 +228,8 @@ if predict:
         if not os.path.exists(prediction_path):
             os.makedirs(prediction_path)
         
-        prediction_path = prediction_path + '\RF_prediction_8Band_median_Mask_' + current_time.strftime('%Y%m%d_%H%M') + '.tif'
-
+        prediction_path = prediction_path + '\\' + os.path.basename(predict_raster).replace('composite.tif', 'prediction_') + current_time.strftime('%Y%m%d_%H%M') + '.tif'
+        prediction_difference_path = prediction_path.replace('prediction_', 'prediction_diff_')
 
 # %% - functions
 
@@ -236,20 +283,21 @@ def log_output(in_string):
     f.close()
     return None
 
-def plotLearningCurve(train_mean, train_std, test_mean, test_std):
+def plotLearningCurve(train_mean, train_std, test_mean, test_std, curve_title):
     plt.plot(train_size_abs, train_mean, color='blue', marker='o', markersize=5, label='Training Accuracy')
-    plt.fill_between(train_size_abs, train_mean + train_std, train_mean - train_std, alpha=0.15, color='blue')
+    plt.fill_between(train_size_abs, train_mean + train_std, train_mean - train_std, alpha=0.3, color='blue')
     plt.plot(train_size_abs, test_mean, color='green', marker='+', markersize=5, linestyle='--', label='Validation Accuracy')
-    plt.fill_between(train_size_abs, test_mean + test_std, test_mean - test_std, alpha=0.15, color='green')
-    plt.title('Learning Curve')
+    plt.fill_between(train_size_abs, test_mean + test_std, test_mean - test_std, alpha=0.3, color='green')
+    plt.title(curve_title)
     plt.xlabel('Training Data Size')
-    plt.ylabel('Model accuracy')
+    plt.ylabel('Model accuracy (f1 weighted)')
     plt.grid()
-    plt.legend(loc='center right')
+    plt.legend(loc='lower right')
     plt.show()
 
 # %% - prepare training data
-if train or kfold or plot_learning_curve:
+
+if train or kfold or plot_learning_curve or final_model:
     all_predictors = []
     
     # add check for extents matching
@@ -297,13 +345,20 @@ if train or kfold or plot_learning_curve:
         
 
         log_output(f'\nAdded {tif} to Y_train truthiness training data set.')
-
         
         bands = None
         
     x_train = np.vstack(all_predictors)
     y_train = np.concatenate(all_truthiness)
     
+    true_positives = np.count_nonzero(y_train == 2)
+    true_negatives = np.count_nonzero(y_train == 1)
+    no_data_value = np.count_nonzero(y_train == 0)
+    
+    print(f'Percent True: {true_positives / y_train.size:1f} ({no_data_value:,} No Data values)')
+    print(f'Percent False: {true_negatives / y_train.size:1f} ({true_positives:,} True values)')
+    print(f'Percent No Data: {no_data_value / y_train.size:1f} ( {true_negatives:,} False values)')
+        
     # https://gis.stackexchange.com/questions/151339/rasterize-a-shapefile-with-geopandas-or-fiona-python
     
     print('\nSplitting data into training and testing...')
@@ -335,107 +390,199 @@ if train or kfold or plot_learning_curve:
 
 # %% - assessment
 
-if plot_learning_curve:
-    start_time = time.time()
-    model = RandomForestClassifier(n_estimators = 100, random_state = 42) # n_jobs=n_jobs,
-    # model = AdaBoostClassifier(n_estimators=50, random_state=42)
-    
-    
-    print('\nComputing learning curve...')
-    log_output('\n--Computing learning curve...')
-    cv = 5 # StratifiedKFold(n_splits=5)
-    train_size_abs, train_scores, test_scores = learning_curve(
-    model, x_train, y_train, cv=cv, n_jobs=n_jobs, scoring='f1_weighted', 
-    train_sizes=np.linspace(0.1, 1., 10))
-    
-    # Elements of Statistical Learning. Especially, see section 15.3.4 (p. 596) about RF and overfitting.
-    
-    # Calculate training and test mean and std
-    train_mean = np.mean(train_scores, axis=1)
-    train_std = np.std(train_scores, axis=1)
-    test_mean = np.mean(test_scores, axis=1)
-    test_std = np.std(test_scores, axis=1)
-    
-    # Plot the learning curve
-    plotLearningCurve(train_mean, train_std, test_mean, test_std)
-    print(f'\n--Completed learning curve in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
-
 if kfold:
     start_time = time.time()
-    model = RandomForestClassifier(n_estimators = 100, random_state = 42, oob_score=True) # n_jobs=n_jobs,
+    # model = RandomForestClassifier(n_estimators = 200, random_state = 42, oob_score=True) # n_jobs=n_jobs,
+    model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.2)
+    # model = MLPClassifier(hidden_layer_sizes=200, max_iter=1000, random_state=42, activation='relu', solver='adam')
                                     
     print('\nPerforming k-fold cross validation...')
     log_output('\n--Performing k-fold cross validation...')
     
-    scores = cross_val_score(model, x_train, y_train, cv=StratifiedKFold(n_splits=5), n_jobs=n_jobs) # ***** check this
+    cv = StratifiedKFold(n_splits=5)
+    scores = cross_val_score(model, x_train, y_train, cv=cv, n_jobs=n_jobs) # ***** check this
     print(f'\n--k-fold cross validation results:\n{scores}')
     print("\n--%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
     log_output(f'\nk-fold cross validation results:\n{scores}'
                f'\n{scores.mean():.2f} accuracy with a standard deviation of {scores.std():.2f}')
 
+model_option = ['Random Forest (100 Trees 20000leaf 200split Samples)',
+                'Random Forest (100 Trees 40000leaf 200split Samples)',
+                ]
     
+capture_mean = []
+
+if plot_learning_curve:
+    for clf in model_option:
+        start_time = time.time()
+        
+        if clf == 'Hist Gradient Boosted lr=0.5 l2=0.9':
+            model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.5, 
+                                                   l2_regularization=0.9)
+        elif clf == 'Hist Gradient Boosted lr=0.5 l2=1.8':
+            model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.5, 
+                                                   l2_regularization=1.8)
+        elif clf == 'Hist Gradient Boosted lr=0.5 l2=3.6':
+            model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.5, 
+                                                   l2_regularization=3.6)
+        elif clf == 'Random Forest (100 Trees 20000leaf 200split Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, 
+                                           min_samples_leaf=20000, min_samples_split=200)
+        elif clf == 'Random Forest (100 Trees 40000leaf 200split Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, 
+                                           min_samples_leaf=40000, min_samples_split=200)
+        elif clf == 'Random Forest (100 Trees 2400leaf 200split Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, 
+                                           min_samples_leaf=2400, min_samples_split=200)
+        elif clf == 'Random Forest (100 Trees 4800leaf 400split Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, 
+                                           min_samples_leaf=4800, min_samples_split=400)
+        elif clf == 'Random Forest (100 Trees 9600leaf 400split Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, 
+                                           min_samples_leaf=9600, min_samples_split=400)
+
+        print(f'\nComputing learning curve for {clf}. Time: {datetime.datetime.now().time()}')
+        log_output(f'--Computing learning curve for {clf}. Time: {datetime.datetime.now().time()}')
+        cv = StratifiedKFold(n_splits=5)
+        train_size_abs, train_scores, test_scores = learning_curve(
+        model, x_train, y_train, cv=cv, n_jobs=n_jobs, scoring='f1_weighted', 
+        train_sizes=np.linspace(0.1, 1., 10), random_state=42)
+        
+        # Elements of Statistical Learning. section 15.3.4 (p. 596) RF and overfitting.
+        
+        # Calculate training and test mean and std
+        train_mean = np.mean(train_scores, axis=1)
+        train_std = np.std(train_scores, axis=1)
+        test_mean = np.mean(test_scores, axis=1)
+        test_std = np.std(test_scores, axis=1)
+        capture_mean.append(test_mean)
+        
+        # Plot the learning curve
+        print(f'--Plotting learning curve for {clf}. Time: {datetime.datetime.now().time()}')
+        plotLearningCurve(train_mean, train_std, test_mean, test_std, curve_title=clf)
+        print(f'Test accuracy:\n{test_mean}')
+        print(f'Test accuracy:\n{test_std}')
+        log_output(f'Test accuracy:{test_mean}\nTest stdev:{test_std}')
+        print(f'\n--Completed learning curve in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+
+
 # %% - train
 
 # https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html
+
+if final_model:
+    start_time = time.time()
+    
+    model = RandomForestClassifier(n_estimators = 50, random_state = 42, n_jobs=n_jobs, oob_score=True)
+    print(f'\nTraining {model} model...')
+    model.fit(x_train, y_train) # all data
+    print(f'--Trained {model} model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+    
+    oob_error = 1 - model.oob_score_
+    print(f'\nOOB Error: {oob_error}')
+    
+    feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False)
+    print(f'\nFeature Importance:\n{feature_importance}')
+    
+    if write_model:
+        pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
+        print(f'\nSaved model: {model_name}\n')
+
 
 if train:
     # train random forest model
     start_time = time.time()
     # https://scikit-learn.org/stable/modules/classes.html#module-sklearn.ensemble
-    # model = MLPClassifier(max_iter=1000, random_state=42, activation='relu', solver='adam')
-    # model = HistGradientBoostingClassifier(random_state=42)
-    model = RandomForestClassifier(n_estimators = 200, random_state = 42, oob_score=True) # n_jobs=n_jobs,
-                                    # max_depth=3, min_samples_leaf=10, min_samples_split=9)
-                                    
-    # model = AdaBoostClassifier(n_estimators=100, random_state=42)
-                
-    print('\nTraining model...')
-    log_output('\nTraining model...')
-    model.fit(X_train, Y_train)
-    print(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
-    log_output(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
     
-    #-- accuracy assessment
-    print('\nAssessing accuracy...') 
+    model_option = ['Random Forest (10 Trees)', 'Random Forest (50 Trees)', 'Random Forest (100 Trees)',
+                    'Random Forest (200 Trees)', 'Random Forest (400 Trees)', 'Random Forest (800 Trees)',
+                    'Random Forest (100 Trees 10 Samples)', 'Random Forest (100 Trees 100 Samples)',
+                    'Random Forest (100 Trees 1000 Samples)', 'Random Forest (100 Trees 10000 Samples)'] 
     
-    if RF:
-        oob_error = 1 - model.oob_score_
-        print(f'\n--OOB Error: {oob_error}')
-    
-    print('\nComputing Precision, Recall, F1...')
-    classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
-    print(f'--Classification Report:\n{classification}')
-    
-    print('\nCreating confusion matrix...')
-    cm = confusion_matrix(Y_test, model.predict(X_test), labels=model.classes_)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
-    disp.plot(cmap='cividis')
-    plt.title('Confusion Matrix')
-    plt.show()
-    
-    print('\nComputing accuracy...')
-    acc1 = accuracy_score(Y_test, model.predict(X_test))*100.0
-    print (f'--Validation Accuracy= {acc1:.2f} %') 
-    
-    print('\nPlotting ROC AUC...')
-    roc_auc=ROCAUC(model, classes=np.unique(Y_train))
-    roc_auc.fit(X_train, Y_train)
-    roc_auc.score(X_test, Y_test)
-    roc_auc.show()
-    
-    if RF:
-        feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False)
-        print(f'\nFeature Importance:\n{feature_importance}')
-        log_output(f'\n--Random forest Validation Accuracy= {acc1:.2f} %'
-                   f'\nFeature Importance:\n{feature_importance}')
+    for clf in model_option:
+        start_time = time.time()
         
-        df = pd.DataFrame(X_train, columns=feature_list)
-        correlation = df.corr()
-        correlation_matrix(correlation)
+        if clf == 'Hist Gradient Boosted l2=0':
+            model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.2)
+        elif clf == 'Random Forest (10 Trees)':
+            model = RandomForestClassifier(n_estimators = 10, random_state = 42, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (50 Trees)':
+            model = RandomForestClassifier(n_estimators = 50, random_state = 42, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (100 Trees)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (200 Trees)':
+            model = RandomForestClassifier(n_estimators = 200, random_state = 42, n_jobs=n_jobs, oob_score=True)
+        elif clf == 'Random Forest (400 Trees)':
+            model = RandomForestClassifier(n_estimators = 400, random_state = 42, n_jobs=n_jobs, oob_score=True)
+        elif clf == 'Random Forest (800 Trees)':
+            model = RandomForestClassifier(n_estimators = 800, random_state = 42, n_jobs=n_jobs, oob_score=True)
+        elif clf == 'Random Forest (100 Trees 10  Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, min_samples_leaf=10, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (100 Trees 100  Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, min_samples_leaf=100, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (100 Trees 1000 Samples)':
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, min_samples_leaf=1000, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest (100 Trees 10000 Samples)': # performed slightly better with 320 samples
+            model = RandomForestClassifier(n_estimators = 100, random_state = 42, min_samples_leaf=10000, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'Random Forest':
+            model = RandomForestClassifier(n_estimators = 200, random_state = 42, n_jobs=n_jobs, oob_score=True) # n_jobs=n_jobs,
+        elif clf == 'MLP':
+            model = MLPClassifier(hidden_layer_sizes=200, max_iter=1000, random_state=42, activation='relu', solver='adam')
     
-    if write_model:
-        pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
-        print(f'\nSaved model: {model_name}\n')
+        # model = MLPClassifier(hidden_layer_sizes=200, max_iter=1000, random_state=42, activation='relu', solver='adam')
+        # model = HistGradientBoostingClassifier(random_state=42, learning_rate=0.2, l2_regularization=0.1)
+        # model = RandomForestClassifier(n_estimators = 2000, random_state = 42, oob_score=True, n_jobs=n_jobs)
+        # model = AdaBoostClassifier(n_estimators=100, random_state=42)
+                
+        print(f'\nTraining {clf} model...')
+        log_output('\nTraining model...')
+        model.fit(X_train, Y_train)
+        print(f'\n--Trained {clf} model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+        log_output(f'\n--Trained model in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
+        
+        #-- accuracy assessment
+        print('\nAssessing accuracy...') 
+        
+        if RF:
+            oob_error = 1 - model.oob_score_
+            print(f'\n--OOB Error: {oob_error}')
+        
+        print('\nComputing Precision, Recall, F1...')
+        classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
+        print(f'--Classification Report:\n{classification}')
+        
+        print('\nCreating confusion matrix...')
+        cm = confusion_matrix(Y_test, model.predict(X_test), labels=model.classes_)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+        disp.plot(cmap='cividis')
+        plt.title('Confusion Matrix')
+        plt.show()
+        
+        print('\nComputing accuracy...')
+        acc1 = accuracy_score(Y_test, model.predict(X_test))*100.0
+        print (f'--Validation Accuracy= {acc1:.2f} %') 
+        
+        print('\nPlotting ROC AUC...')
+        roc_auc=ROCAUC(model, classes=np.unique(Y_train))
+        roc_auc.fit(X_train, Y_train)
+        roc_auc.score(X_test, Y_test)
+        roc_auc.show()
+        
+        if RF:
+            feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False)
+            print(f'\nFeature Importance:\n{feature_importance}')
+            log_output(f'\n--Random forest Validation Accuracy= {acc1:.2f} %'
+                       f'\nFeature Importance:\n{feature_importance}')
+            
+            df = pd.DataFrame(X_train, columns=feature_list)
+            correlation = df.corr()
+            correlation_matrix(correlation)
+        
+        model_name = model_dir + '\\' + clf + '_8Band_2000Trees_4Masks_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+        
+        if write_model:
+            pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
+            print(f'\nSaved model: {model_name}\n')
 
 # %% - prediction
 
@@ -560,8 +707,27 @@ if predict:
         
         differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
         differences = np.where(bandmask > im_predicted, 3, differences)
+        
+        false_positives = np.count_nonzero(differences == 5)
+        false_negatives = np.count_nonzero(differences == 3)
+        print(f'\nNumber of false positives: {false_positives:,}')
+        print(f'Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
+        print(f'Number of false_negatives: {false_negatives:,}')
+        print(f'Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
+        
         plot_title = 'IOU'
         plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
+        
+        if write_prediction:
+            out_meta.update({"driver": "GTiff",
+                              "height": differences.shape[0],
+                              "width": differences.shape[1],
+                              "count": 1})
+            
+            with rasterio.open(prediction_difference_path, "w", **out_meta) as dest:
+                dest.write(differences, 1)
+            
+            dest = None
         
         # method in pytorch
         # target = tensor(bandmask)
@@ -741,3 +907,27 @@ t.toc('Truthiness.py total time:')
 # print('\nComputing F1...')
 # f1 = f1_score(Y_test, model.predict(X_test), average='weighted')
 # print (f'--F1: {f1:.3f} ')
+
+# RGB_SCALE = 255
+# CMYK_SCALE = 100
+
+
+# def rgb_to_cmyk(r, g, b):
+#     if (r, g, b) == (0, 0, 0):
+#         # black
+#         return 0, 0, 0, CMYK_SCALE
+
+#     # rgb [0,255] -> cmy [0,1]
+#     c = 1 - r / RGB_SCALE
+#     m = 1 - g / RGB_SCALE
+#     y = 1 - b / RGB_SCALE
+
+#     # extract out k [0, 1]
+#     min_cmy = min(c, m, y)
+#     c = (c - min_cmy) / (1 - min_cmy)
+#     m = (m - min_cmy) / (1 - min_cmy)
+#     y = (y - min_cmy) / (1 - min_cmy)
+#     k = min_cmy
+
+#     # rescale to the range [0,CMYK_SCALE]
+#     return c * CMYK_SCALE, m * CMYK_SCALE, y * CMYK_SCALE, k * CMYK_SCALE
