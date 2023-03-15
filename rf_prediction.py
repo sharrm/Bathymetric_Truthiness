@@ -108,22 +108,22 @@ test_rasters = [r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Exte
                  r'P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_composite.tif',
                  r'P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_composite.tif']
 
-test_models = ["P:\Thesis\Models\Random Forest (400 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (800 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (100 Trees 10 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (100 Trees 100 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (100 Trees 1000 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (100 Trees 10000 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (10 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (50 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (100 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
-              "P:\Thesis\Models\Random Forest (200 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl"]
+test_models = [r"P:\Thesis\Models\Random Forest (400 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (800 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (100 Trees 10 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (100 Trees 100 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (100 Trees 1000 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (100 Trees 10000 Samples)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (10 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (50 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (100 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl",
+              r"P:\Thesis\Models\Random Forest (200 Trees)_8Band_2000Trees_4Masks_20230314_1409.pkl"]
 
 # IOU metrics
 test_masks = [r'P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif',
-             r"P:\Thesis\Masks\Niihua_Mask_TF.tif",
-             r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
-             r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif"]
+              r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
+              r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif",
+              r"P:\Thesis\Masks\Niihua_Mask_TF.tif"]
 
 # Post-Processing
 # median_filter_tf = True
@@ -207,38 +207,37 @@ def log_output(in_string):
 
 # %% - prediction
 
-for mask, predict_raster in enumerate(test_rasters):
-    print(f'Mask number: {mask}')
-    #-- Every cell location in a raster has a value assigned to it. 
-    #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
-    upper_limit = np.finfo(np.float32).max/10
-    lower_limit = np.finfo(np.float32).min/10
-    
-    features_list = []
-    pr = rasterio.open(predict_raster)
-    out_meta = pr.meta
-    pr = pr.read().transpose(1,2,0)
-    
-    for i, __ in enumerate(feature_list): # need to make into a function
-        ft = pr[:,:,i]
-        ft[ft == -9999.] = 0.
-        ft = np.nan_to_num(ft)
-        ft[(ft < lower_limit) | (ft > upper_limit)] = 0.
-        # ft = median_filter(ft,size=3)
-        # ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
-        features_list.append(scaleData(ft))
-    
-    features_arr = np.array(features_list)
-    predictors = np.moveaxis(features_arr,0,-1) # np.ndstack is slow  
-    mask = predictors[:,:,0]
-    print(f'Read raster to predict: {predict_raster}')
-    
-    start_time = time.time()
-    
-    for pkl in test_models: # os.listdir(use_models)
-        model = pickle.load(open(pkl, 'rb'))
-        print(f'Loaded model: {model}')
+for pkl in test_models: # os.listdir(use_models)
+    model = pickle.load(open(pkl, 'rb'))
+    print(f'Loaded model: {model}')
+
+    for tm, predict_raster in enumerate(test_rasters):
+        #-- Every cell location in a raster has a value assigned to it. 
+        #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
+        upper_limit = np.finfo(np.float32).max/10
+        lower_limit = np.finfo(np.float32).min/10
         
+        features_list = []
+        pr = rasterio.open(predict_raster)
+        out_meta = pr.meta
+        pr = pr.read().transpose(1,2,0)
+        
+        for i, __ in enumerate(feature_list): # need to make into a function
+            ft = pr[:,:,i]
+            ft[ft == -9999.] = 0.
+            ft = np.nan_to_num(ft)
+            ft[(ft < lower_limit) | (ft > upper_limit)] = 0.
+            # ft = median_filter(ft,size=3)
+            # ft[(ft < np.mean(ft) - stdevs * np.std(ft)) | (ft > np.mean(ft) + stdevs * np.std(ft))] = 0. # set anything 3 std from mean to 0
+            features_list.append(scaleData(ft))
+        
+        features_arr = np.array(features_list)
+        predictors = np.moveaxis(features_arr,0,-1) # np.ndstack is slow  
+        mask = predictors[:,:,0]
+        print(f'Read raster to predict: {predict_raster}')
+        
+        start_time = time.time()
+            
         rc = np.argwhere(mask>0) # return the rows and columns of array elements that are not zero 
         X_new = predictors[rc[:,0],rc[:,1],:] # return the pixel values of n channels 
         X_new = np.nan_to_num(X_new)
@@ -275,21 +274,21 @@ for mask, predict_raster in enumerate(test_rasters):
         #     print(f'Saved prediction raster: {prediction_path}')
 
     # intersection over union
-    if Perform_IOU:
-        print(f'\nPerforming intersection over union analysis on {test_masks[mask]}')
-        bandmask = rasterio.open(test_masks[mask]).read(1)
-        iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
-        print(f'--IOU: {iou_score:.3f}')
-        
-        differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
-        differences = np.where(bandmask > im_predicted, 3, differences)
-        
-        false_positives = np.count_nonzero(differences == 5)
-        false_negatives = np.count_nonzero(differences == 3)
-        print(f'\nNumber of false positives: {false_positives:,}')
-        print(f'Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
-        print(f'Number of false_negatives: {false_negatives:,}')
-        print(f'Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
-        
-        plot_title = 'IOU'
-        plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
+        if Perform_IOU:
+            print(f'\nPerforming intersection over union analysis on {test_masks[tm]}')
+            bandmask = rasterio.open(test_masks[tm]).read(1)
+            iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
+            print(f'--IOU: {iou_score:.3f}')
+            
+            differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
+            differences = np.where(bandmask > im_predicted, 3, differences)
+            
+            false_positives = np.count_nonzero(differences == 5)
+            false_negatives = np.count_nonzero(differences == 3)
+            print(f'\nNumber of false positives: {false_positives:,}')
+            print(f'Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
+            print(f'Number of false_negatives: {false_negatives:,}')
+            print(f'Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
+            
+            plot_title = 'IOU'
+            plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
