@@ -7,7 +7,7 @@ Created on Tue Jan 10 12:43:02 2023
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from pytictoc import TicToc
+# from pytictoc import TicToc
 import rasterio
 from rasterio import features
 from rasterio.transform import from_bounds
@@ -16,55 +16,16 @@ from rasterio.plot import show
 import numpy as np
 import os
 
-t = TicToc()
-t.tic()
+# t = TicToc()
+# t.tic()
 
-# # 11:09:47 From  Michael Olsen  to  Everyone:
-# # 	https://pro.arcgis.com/en/pro-app/latest/tool-reference/image-analyst/export-training-data-for-deep-learning.htm
-# # 11:10:45 From  Michael Olsen  to  Everyone:
-# # 	https://www.esri.com/training/catalog/5eb18cf2a7a78b65b7e26134/deep-learning-using-arcgis/
-
-# polygon = r"P:\Thesis\Samples\Polygon\KeyLargoExtent.shp"
-# composite_raster = r"P:\Thesis\Training\KeyLargo\_Train\_Bands_11Band\_Composite\KeyLargo_composite.tif"
-# polygon = r"P:\Thesis\Samples\Polygon\FLKeys_Training.shp"
-# composite_raster = r"P:\Thesis\Training\FLKeys\_Bands_11Band\_Composite\FLKeys_composite.tif"
 poly_to_raster = True
 
-# polygon = r"P:\Thesis\_Monday\_Polygons\FLKeys_F_Deep.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\FLKeys_F_Turbid.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\FLKeys_T.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\Halfmoon_F_Deep.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\Halfmoon_F_Turbid.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\Halfmoon_T.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\KeyLargo_F.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\KeyLargo_TF.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\NWHI_F_Deep.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\NWHI_T.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\PR_F_Deep_Clean.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\PR_F_Deep_Noise.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\PR_F_Turbid.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\PR_TF.shp"
-# polygon = r"P:\Thesis\_Monday\_Polygons\StCroix_F_Deep.shp"
-polygon = r"P:\Thesis\_Monday\_Polygons\StCroix_T.shp"
+polygon = r"P:\Thesis\Masks\Saipan_Mask_NoIsland.shp"
+composite_raster = "P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
 
-# composite_raster = r"P:\Thesis\_Monday\X_train\FLKeys_F_Deep_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\FLKeys_F_Turbid_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\FLKeys_T_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\Halfmoon_F_Deep_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\Halfmoon_F_Turbid_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\Halfmoon_T_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\KeyLargo_F_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\KeyLargo_TF_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\NWHI_F_Deep_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\NWHI_T_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\PR_F_Deep_Clean_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\PR_F_Deep_Noise_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\PR_F_Turbid_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\PR_TF_composite.tif"
-# composite_raster = r"P:\Thesis\_Monday\X_train\StCroix_F_Deep_composite.tif"
-composite_raster = r"P:\Thesis\_Monday\X_train\StCroix_T_composite.tif"
-
-binary_raster = r"P:\Thesis\_Monday\Y_train" + '\\' + os.path.basename(polygon).split('.')[0] + '_truthiness.tif'
+# binary_raster = r"P:\Thesis\Samples\Raster" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
+binary_raster = r"P:\Thesis\Masks" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
 
 if poly_to_raster:   
     # Load polygon
@@ -110,4 +71,4 @@ if poly_to_raster:
     # print(f"\nWrote {output_raster}")
     print(f"\nWrote {binary_raster}")
     
-t.toc()
+# t.toc()

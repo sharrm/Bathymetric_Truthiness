@@ -1,87 +1,142 @@
 # -*- coding: utf-8 -*-
 """
 @author: sharrm
+
+Updated: 20Mar2023
 """
 
-import sys
-import os
-import numpy as np
+import fiona
+import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
+import os
 import rasterio
+from rasterio import features
+from rasterio.enums import MergeAlg
 import rasterio.mask
+from rasterio.plot import show
+from rasterio.transform import from_bounds
 import richdem as rd
 from osgeo import gdal
 from scipy.ndimage import uniform_filter
 # from scipy.ndimage import generic_filter
-from scipy.ndimage import sobel, prewitt
+# from scipy.ndimage import sobel, prewitt, laplace, gaussian_gradient_magnitude
+# from scipy.ndimage import convolve
+import sys
+import geopandas as gpd
 # from skimage import feature, filters
-# from rasterio import plot
-# from rasterio.plot import show
-import fiona
-#import geopandas as gpd
 # from osgeo import gdal
 
 
-def mask_imagery(red, green, blue, nir, in_shp, output_dir):
+# %% - check boundary
+def check_bounds(rgbnir_dir, shapefile):
+    raster = [os.path.join(rgbnir_dir, r) for r in os.listdir(rgbnir_dir) if r.endswith('.tif')]
+    raster_bounds = rasterio.open(raster[0]).bounds
+    
+    for r in raster[1:]:
+        if raster_bounds != rasterio.open(r).bounds:
+            print(f'Unexpected boundary for {r} in {os.path.dirname(rgbnir_dir)}')
+        
+    # check if shapefiles point locations are inside the bounds of the raster
+    shp_bounds = fiona.open(shapefile, 'r').bounds
+    
+    # check bounds
+    eastings_within = np.logical_and(shp_bounds[0] > raster_bounds[0], # left
+                                     shp_bounds[2] < raster_bounds[2]) # right
+    northings_within = np.logical_and(shp_bounds[1] > raster_bounds[1], # bottom
+                                      shp_bounds[3] < raster_bounds[3]) # top
+    
+    if np.all([eastings_within, northings_within]):
+        print(f'{os.path.basename(shapefile)} within bounds of {os.path.basename(rgbnir_dir)} imagery\n')
+        return True
+    else:
+        return False
 
-    # list of bands
-    rasters = [blue, green, red, nir]
 
-    # dict to store output file names
-    masked_rasters = {}
+# %% - features
 
+def mask_imagery(band, in_shp, masked_raster_name):
     #open bounding shapefile
     with fiona.open(in_shp, 'r') as shapefile:
         shape = [feature['geometry'] for feature in shapefile]
 
-    raster_list = []
-    #loop through input rasters
-    for band in rasters:
-        # read raster, extract spatial information, mask the raster using the input shapefile
-        with rasterio.open(band) as src:
-            out_image, out_transform = rasterio.mask.mask(src, shape, crop=True)
-            out_meta = src.meta
-            # nodata = src.nodata
+    # read raster, extract spatial information, mask the raster using the input shapefile
+    with rasterio.open(band) as src:
+        out_image, out_transform = rasterio.mask.mask(src, shape, crop=True)
+        out_meta = src.meta
+        
+    # writing information
+    out_meta.update({"driver": "GTiff",
+                     # "dtype": 'float32',
+                      "height": out_image.shape[1],
+                      "width": out_image.shape[2],
+                      "nodata": 0,
+                      "count": 1,
+                      "transform": out_transform})
 
-        # writing information
-        out_meta.update({"driver": "GTiff",
-                         # "dtype": 'float32',
-                          "height": out_image.shape[1],
-                          "width": out_image.shape[2],
-                          "transform": out_transform},)
+    # write masked raster to a file
+    with rasterio.open(masked_raster_name, "w", **out_meta) as dest:
+        dest.write(out_image)
 
-        # simply customizing the output filenames here -- there's probably a better method
-        if '492' in band or 'B2' in band: # blue wavelength (492nm)
-            outraster_name = os.path.join(output_dir, 'masked_' + os.path.basename(band)[-7:-4] + '.tif')
-            masked_rasters['blue'] = outraster_name
-        elif '560' in band or 'B3' in band or '559' in band: # green wavelength (560nm)
-            outraster_name = os.path.join(output_dir, 'masked_' + os.path.basename(band)[-7:-4] + '.tif')
-            masked_rasters['green'] = outraster_name
-        elif '665' in band or 'B4' in band: # red wavelength (665nm)
-            outraster_name = os.path.join(output_dir, 'masked_' + os.path.basename(band)[-7:-4] + '.tif')
-            masked_rasters['red'] = outraster_name
-        elif '833' in band or 'B8' in band: # red wavelength (665nm)
-            outraster_name = os.path.join(output_dir, 'masked_' + os.path.basename(band)[-7:-4] + '.tif')
-            masked_rasters['nir'] = outraster_name
+    # close the file
+    dest = None
+    return True, masked_raster_name
 
-        # write masked raster to a file
-        with rasterio.open(outraster_name, "w", **out_meta) as dest:
-            dest.write(out_image)
+def odi_1(blue_name, green_name, odi_1_name, output_dir):
+    out_meta = rasterio.open(blue_name).meta
+    blue_band = rasterio.open(blue_name).read(1)
+    green_band = rasterio.open(green_name).read(1)
+    
+    odi_1_arr = (green_band * green_band) / blue_band
+    
+    out_meta.update({"driver": "GTiff",
+                     # "dtype": 'float32',
+                      "height": blue_band.shape[0],
+                      "width": blue_band.shape[1],
+                      "nodata": 0,
+                      "count": 1})
+    
+    # output raster filename with path
+    outraster_name = os.path.join(output_dir, odi_1_name)
+    
+    # write masked raster to a file
+    with rasterio.open(outraster_name, "w", **out_meta) as dest:
+        dest.write(odi_1_arr, 1)
+    
+    dest = None
+    return True, outraster_name
 
-        raster_list.append(outraster_name)
-        # close the file
-        dest = None
-
-    return True, raster_list, out_meta
-
+def odi_2(blue_name, green_name, odi_2_name, output_dir):
+    out_meta = rasterio.open(blue_name).meta
+    blue_band = rasterio.open(blue_name).read()
+    green_band = rasterio.open(green_name).read()
+    
+    odi_2_arr = (green_band - blue_band) / (green_band + blue_band)
+    
+    out_meta.update({"driver": "GTiff",
+                     # "dtype": 'float32',
+                      "height": blue_band.shape[1],
+                      "width": blue_band.shape[2],
+                      "nodata": 0,
+                      "count": 1})
+    
+    # output raster filename with path
+    outraster_name = os.path.join(output_dir, odi_2_name)
+    
+    # write masked raster to a file
+    with rasterio.open(outraster_name, "w", **out_meta) as dest:
+        dest.write(odi_2_arr)
+    
+    dest = None
+    return True, outraster_name
 
 def pSDBn (band1, band2, rol_name, output_dir):
 
-    # read blue band
+    # read first band
     with rasterio.open(band1) as band1_src:
         band1_image = band1_src.read(1)
 
-    # read green band
+    # read second band
     with rasterio.open(band2) as band2_src:
         band2_image = band2_src.read(1)
         out_meta = band2_src.meta
@@ -90,7 +145,7 @@ def pSDBn (band1, band2, rol_name, output_dir):
     ratioArrayOutput = np.log(band1_image * 1000.0) / np.log(band2_image * 1000.0)
     
     # output raster filename with path
-    outraster_name = os.path.join(output_dir, rol_name + '.tif')
+    outraster_name = os.path.join(output_dir, rol_name)
     
     # writing information  
     ratioArrayOutput[np.isnan(ratioArrayOutput)] = 0.0
@@ -104,141 +159,49 @@ def pSDBn (band1, band2, rol_name, output_dir):
     # close the file
     dest = None
 
-    print(f"The ratio raster file is called: {outraster_name}")
-
-    return True, outraster_name, ratioArrayOutput, out_meta
-
-
-# %% - surface roughness
+    return True, outraster_name
 
 # in general, when writing a file use one to specify number of bands.
-
 def slope(pSDB_str, slope_name, output_dir):
     slope_output = os.path.join(output_dir, slope_name)
     gdal.DEMProcessing(slope_output, pSDB_str, 'slope') # writes directly to file
-    
     return True, slope_output
 
-# def stdev(pSDB_str, window, stdev_name, output_dir, out_meta):
-#     pSDB_slope = rasterio.open(pSDB_str).read(1)
-#     pSDB_slope[pSDB_slope == -9999.] = 0. # be careful of no data values
-    
-#     print(f'Computing standard deviation of slope within a {window} window...')
-    
-#     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generic_filter.html
-#     std = generic_filter(pSDB_slope, np.std, size=window)
-       
-#     stdev_output = os.path.join(output_dir, stdev_name)
-    
-#     with rasterio.open(stdev_output, "w", **out_meta) as dest:
-#         dest.write(std, 1)
-    
-#     pSDB_slope = None
-#     dest = None
-    
-#     return True, stdev_output
-    
-
 # from: https://stackoverflow.com/questions/18419871/improving-code-efficiency-standard-deviation-on-sliding-windows
-def window_stdev(pSDBg_slope, window, stdev_name, output_dir, out_meta):
-    pSDBg_slope = rasterio.open(pSDBg_slope).read(1)
-    pSDBg_slope[pSDBg_slope == -9999.] = 0.
+def window_stdev(pSDB_slope, window, stdev_name, output_dir):
+    out_meta = rasterio.open(pSDB_slope).meta
+    pSDB_slope = rasterio.open(pSDB_slope).read(1)
+    pSDB_slope[pSDB_slope == -9999.] = 0.
     
-    # recommendation; I simply set any nans to 0 below
     # https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
-    # r,c = pSDBg_slope.shape
-    # pSDBg_slope+=np.random.rand(r,c)*1e-6
-    
-    c1 = uniform_filter(pSDBg_slope, window, mode='reflect')
-    c2 = uniform_filter(pSDBg_slope*pSDBg_slope, window, mode='reflect')
+    c1 = uniform_filter(pSDB_slope, window, mode='reflect')
+    c2 = uniform_filter(pSDB_slope * pSDB_slope, window, mode='reflect')
     std = np.sqrt(c2 - c1*c1)
     std[std == np.nan] = 0.
     
     stdev_output = os.path.join(output_dir, stdev_name)
+    
+    out_meta.update({"driver": "GTiff",
+                      "height": pSDB_slope.shape[0],
+                      "width": std.shape[1],
+                      "count": 1,
+                      "nodata": 0})
 
     # write stdev slope edges to file
     with rasterio.open(stdev_output, "w", **out_meta) as dest:
         dest.write(std, 1)
-    
     return True, stdev_output
-
-# Zevenbergen, L.W., Thorne, C.R., 1987. Quantitative analysis of land surface topography. Earth surface processes and landforms 12, 47–56.
-def curvature(pSDB, curvature_name, output_dir, out_meta):
-    curvature_output = os.path.join(output_dir, curvature_name)
-    
-    # sys.stdout = open(os.devnull, 'w')
-    rda = rd.rdarray(pSDB, no_data=0.0)
-    curve = rd.TerrainAttribute(rda, attrib='curvature')
-    # sys.stdout = sys.__stdout__
-    
-    curve = np.array(curve)
-    curve[curve == -9999] = 0.0
-    
-    # write curvature to file
-    with rasterio.open(curvature_output, "w", **out_meta) as dest:
-        dest.write(curve, 1)
-    
-    return True, curvature_output
-
-def tri(pSDB_str, tri_name, output_dir):
-    tri_output = os.path.join(output_dir, tri_name)
-    gdal.DEMProcessing(tri_output, pSDB_str, 'TRI', options=gdal.DEMProcessingOptions(alg='Wilson')) # writes directly to file
-    
-    return True, tri_output
-
-def tpi(pSDB_str, tpi_name, output_dir):
-    tpi_output = os.path.join(output_dir, tpi_name)
-    gdal.DEMProcessing(tpi_output, pSDB_str, 'TPI') # writes directly to file
-    
-    return True, tpi_output
 
 def roughness(pSDB_str, roughness_name, output_dir):
     roughness_output = os.path.join(output_dir, roughness_name)
     gdal.DEMProcessing(roughness_output, pSDB_str, 'Roughness') # writes directly to file
-    
     return True, roughness_output
-
-# def canny(pSDB, canny_name, output_dir, out_meta):
-#     canny_edges = feature.canny(pSDB, sigma=1.0)
-#     canny_output = os.path.join(output_dir, canny_name)
-    
-#     # write canny edges to file
-#     with rasterio.open(canny_output, "w", **out_meta) as dest:
-#         dest.write(canny_edges, 1)
-    
-#     return True, canny_output
-
-def sobel_filt(pSDB, sobel_name, output_dir, out_meta):
-    
-    sobel_input = rasterio.open(pSDB).read(1)
-    
-    sobel_edges = sobel(sobel_input)
-    sobel_output = os.path.join(output_dir, sobel_name)
-    
-    # write sobel edges to file
-    with rasterio.open(sobel_output, "w", **out_meta) as dest:
-        dest.write(sobel_edges, 1)
-        
-    sobel_input = None
-    dest = None
-    
-    return True, sobel_output, sobel_edges
-
-def prewitt_filt(pSDB, prewitt_name, output_dir, out_meta):
-    prewitt_edges = prewitt(pSDB)
-    prewitt_output = os.path.join(output_dir, prewitt_name)
-    
-    # write prewitt edges to file
-    with rasterio.open(prewitt_output, "w", **out_meta) as dest:
-        dest.write(prewitt_edges, 1)
-    
-    return True, prewitt_output, prewitt_edges
 
 
 # %% - composite
 
 # in a multi-band raster, make band dimension first dimension in array, and use no band number when writing
-def composite(dir_list, output_composite):
+def composite(dir_list, output_composite_name):
     
     bands = []
     
@@ -248,7 +211,7 @@ def composite(dir_list, output_composite):
     for file in dir_list:
         band = rasterio.open(file)
         
-        print(f'Merging {file} to composite')
+        print(f'--Merging {file} to composite')
         
         if need_meta_trans:
             out_meta = band.meta
@@ -275,15 +238,172 @@ def composite(dir_list, output_composite):
                       # 'compress': 'lzw',
                       "transform": out_transform})
     
-    with rasterio.open(output_composite, "w", **out_meta) as dest:
+    with rasterio.open(output_composite_name, "w", **out_meta) as dest:
         dest.write(comp) # had to specify '1' here for some reason
 
     dest = None
+    return True, comp.shape[0]
+
+
+# %% - labeled polygon to raster
+
+def polygon_to_raster(polygon, composite_raster, binary_raster):
+    # Load polygon
+    vector = gpd.read_file(polygon)
+    raster = rasterio.open(composite_raster)
+    out_transform = raster.transform 
+    out_meta = raster.meta
+    out_shape = raster.shape
+    
+    geom = []
+    for shape in range(0, len(vector['geometry'])):
+        geom.append((vector['geometry'][shape], vector['Truthiness'][shape]))
+    
+    # https://rasterio.readthedocs.io/en/latest/api/rasterio.features.html
+    rasterized = features.rasterize(geom,
+        out_shape=out_shape,
+        transform=out_transform,
+        fill=0,
+        all_touched=False,
+        default_value=1,
+        dtype=None)
+    
+    # Plot raster
+    fig, ax = plt.subplots(1, figsize = (10, 10))
+    show(rasterized, ax = ax)
+
+    # raster_name = os.path.basename(polygon).replace('shp', 'tif')
+    # output_raster = os.path.join(os.path.abspath(os.path.join(os.path.dirname(polygon),
+    #                                                           '..', 'Raster')), raster_name)
+    
+    out_meta.update({"driver": "GTiff",
+                      "height": out_shape[0],
+                      "width": out_shape[1],
+                      "count": 1,
+                      "nodata": 0.,
+                      "transform": out_transform})
+    
+    with rasterio.open(binary_raster, 'w', **out_meta) as dest:
+        dest.write(rasterized, 1)
         
-    return True, output_composite, comp.shape[0]
+    dest = None
+    
+    # print(f"\nWrote {output_raster}")
+    print(f"\nWrote {binary_raster}")
+    return None
 
 
-# %% -
+# %% - notes
+
+# def canny(pSDB, canny_name, output_dir, out_meta):
+#     canny_edges = feature.canny(pSDB, sigma=1.0)
+#     canny_output = os.path.join(output_dir, canny_name)
+    
+#     # write canny edges to file
+#     with rasterio.open(canny_output, "w", **out_meta) as dest:
+#         dest.write(canny_edges, 1)
+    
+#     return True, canny_output
+
+# Zevenbergen, L.W., Thorne, C.R., 1987. Quantitative analysis of land surface topography. Earth surface processes and landforms 12, 47–56.
+# def curvature(pSDB, curvature_name, output_dir, out_meta):
+#     curvature_output = os.path.join(output_dir, curvature_name)
+    
+#     # sys.stdout = open(os.devnull, 'w')
+#     rda = rd.rdarray(pSDB, no_data=0.0)
+#     curve = rd.TerrainAttribute(rda, attrib='curvature')
+#     # sys.stdout = sys.__stdout__
+    
+#     curve = np.array(curve)
+#     curve[curve == -9999] = 0.0
+    
+#     # write curvature to file
+#     with rasterio.open(curvature_output, "w", **out_meta) as dest:
+#         dest.write(curve, 1)
+#     return True, curvature_output
+
+# def tri(pSDB_str, tri_name, output_dir):
+#     tri_output = os.path.join(output_dir, tri_name)
+#     gdal.DEMProcessing(tri_output, pSDB_str, 'TRI', options=gdal.DEMProcessingOptions(alg='Wilson')) # writes directly to file
+#     return True, tri_output
+
+# def tpi(pSDB_str, tpi_name, output_dir):
+#     tpi_output = os.path.join(output_dir, tpi_name)
+#     gdal.DEMProcessing(tpi_output, pSDB_str, 'TPI') # writes directly to file
+#     return True, tpi_output
+
+# def sobel_filt(pSDB, sobel_name, output_dir, out_meta):
+    
+#     sobel_input = rasterio.open(pSDB).read(1)
+    
+#     sobel_edges = sobel(sobel_input)
+#     sobel_output = os.path.join(output_dir, sobel_name)
+    
+#     # write sobel edges to file
+#     with rasterio.open(sobel_output, "w", **out_meta) as dest:
+#         dest.write(sobel_edges, 1)
+        
+#     sobel_input = None
+#     dest = None
+#     return True, sobel_output, sobel_edges
+
+# def prewitt_filt(pSDB, prewitt_name, output_dir, out_meta):
+#     prewitt_edges = prewitt(pSDB)
+#     prewitt_output = os.path.join(output_dir, prewitt_name)
+    
+#     # write prewitt edges to file
+#     with rasterio.open(prewitt_output, "w", **out_meta) as dest:
+#         dest.write(prewitt_edges, 1)
+#     return True, prewitt_output, prewitt_edges
+
+# def laplace_filt(pSDB, laplace_name, output_dir, out_meta):
+    
+#     laplace_input = rasterio.open(pSDB).read(1)
+    
+#     laplace_result = laplace(laplace_input)
+#     laplace_output = os.path.join(output_dir, laplace_name)
+    
+#     # write sobel edges to file
+#     with rasterio.open(laplace_output, "w", **out_meta) as dest:
+#         dest.write(laplace_result, 1)
+        
+#     laplace_input = None
+#     dest = None
+#     return True, laplace_output
+
+# def gaussian_gradient_magnitude_filt(pSDB, gauss_name, output_dir, out_meta):
+    
+#     gauss_input = rasterio.open(pSDB).read(1)
+    
+#     gauss_result = gaussian_gradient_magnitude(gauss_input, sigma=1)
+#     gauss_output = os.path.join(output_dir, gauss_name)
+    
+#     # write sobel edges to file
+#     with rasterio.open(gauss_output, "w", **out_meta) as dest:
+#         dest.write(gauss_result, 1)
+        
+#     gauss_input = None
+#     dest = None
+#     return True, gauss_output
+
+# def highpass_filt(pSDB, highpass_name, output_dir, out_meta):
+    
+#     kernel = np.array([[-1, -1, -1],
+#                        [-1,  8, -1],
+#                        [-1, -1, -1]])
+    
+#     highpass_input = rasterio.open(pSDB).read(1)
+    
+#     highpass_result = convolve(highpass_input, kernel)
+#     highpass_output = os.path.join(output_dir, highpass_name)
+    
+#     # write sobel edges to file
+#     with rasterio.open(highpass_output, "w", **out_meta) as dest:
+#         dest.write(highpass_result, 1)
+        
+#     highpass_input = None
+#     dest = None
+#     return True, highpass_output
 
 # def stdev_slope(pSDB, window_size, stdev_name, output_dir, out_meta):
 #     # window_size = window_size
@@ -360,3 +480,22 @@ def composite(dir_list, output_composite):
 #     dest = None
 
 #     return None
+
+# def stdev(pSDB_str, window, stdev_name, output_dir, out_meta):
+#     pSDB_slope = rasterio.open(pSDB_str).read(1)
+#     pSDB_slope[pSDB_slope == -9999.] = 0. # be careful of no data values
+    
+#     print(f'Computing standard deviation of slope within a {window} window...')
+    
+#     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generic_filter.html
+#     std = generic_filter(pSDB_slope, np.std, size=window)
+       
+#     stdev_output = os.path.join(output_dir, stdev_name)
+    
+#     with rasterio.open(stdev_output, "w", **out_meta) as dest:
+#         dest.write(std, 1)
+    
+#     pSDB_slope = None
+#     dest = None
+    
+#     return True, stdev_output
