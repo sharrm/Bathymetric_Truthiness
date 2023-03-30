@@ -82,6 +82,48 @@ def mask_imagery(band, in_shp, masked_raster_name):
     dest = None
     return True, masked_raster_name
 
+def rgb_to_cmyk(red_name, green_name, blue_name, output_dir):
+    out_meta = rasterio.open(blue_name).meta
+    blue_band = rasterio.open(blue_name).read(1)
+    green_band = rasterio.open(green_name).read(1)
+    red_band = rasterio.open(red_name).read(1)
+    
+    RGB_SCALE = 255
+    CMYK_SCALE = 100
+
+    # rgb [0,255] -> cmy [0,1]
+    # c = 1 - red_int/ RGB_SCALE
+    # m = 1 - green_band / RGB_SCALE
+    # y = 1 - blue_band / RGB_SCALE
+    
+    c = 1 - red_band
+    m = 1 - green_band
+    y = 1 - blue_band
+
+    # extract out k [0, 1]
+    min_cmy = np.minimum.reduce([c, m, y])
+    ck = (c - min_cmy) / (1 - min_cmy)
+    mk = (m - min_cmy) / (1 - min_cmy)
+    yk = (y - min_cmy) / (1 - min_cmy)
+    k = min_cmy
+    
+    # rescale to the range [0,CMYK_SCALE]
+    cmyk = [ck * CMYK_SCALE, mk * CMYK_SCALE, yk * CMYK_SCALE, k * CMYK_SCALE]
+    
+    cyan_out = os.path.join(output_dir, 'cyan.tif')
+    magenta_out = os.path.join(output_dir, 'magenta.tif')
+    yellow_out = os.path.join(output_dir, 'yellow.tif')
+    black_out = os.path.join(output_dir, 'black.tif')
+    
+    color_name = [cyan_out, magenta_out, yellow_out, black_out]
+    
+    for color_arr, outraster_name in zip(cmyk, color_name):
+        
+        with rasterio.open(outraster_name, "w", **out_meta) as dest:
+            dest.write(color_arr,1)
+
+    return True, *color_name
+
 def odi_1(blue_name, green_name, odi_1_name, output_dir):
     out_meta = rasterio.open(blue_name).meta
     blue_band = rasterio.open(blue_name).read(1)

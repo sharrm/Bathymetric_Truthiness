@@ -24,7 +24,7 @@ from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassif
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import classification_report, jaccard_score, roc_curve
 from sklearn.model_selection import cross_val_score, learning_curve, StratifiedKFold
-# from sklearn.neural_network import MLPClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.tree import export_graphviz
 import sys
@@ -303,9 +303,17 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
                 else:
                     assess_accuracy(clf, X_train, Y_train, X_test, Y_test, False, feature_list)
         
-            if write_model:
-                model_name = model_dir + f'\RF_{X_train.shape[1]}Bands_{num_inputs}Inputs_{model.n_estimators}Trees_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+            if write_model and 'RandomForestClassifier' in str(clf):
+                model_name = model_dir + f'\RF_{X_train.shape[1]}B_{num_inputs}In_{model.n_estimators}Trees_{model.min_samples_leaf}leaf_{model.min_samples_split}split_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
+                print(f'\nSaved model: {model_name}\n')
+            elif write_model and 'Hist' in str(clf):
+                model_name = model_dir + f'\Hist_{X_train.shape[1]}B_{num_inputs}In_LR{model.learning_rate}_L2{model.l2_regularization}_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+                pickle.dump(model, open(model_name, 'wb'))
+                print(f'\nSaved model: {model_name}\n')
+            elif write_model and 'MLP' in str(clf):
+                model_name = model_dir + f'\MLP_{X_train.shape[1]}B_{num_inputs}In_{model.hidden_layer_sizes}Layers_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+                pickle.dump(model, open(model_name, 'wb'))
                 print(f'\nSaved model: {model_name}\n')
         return model
     else:
@@ -372,19 +380,24 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
 # %% -- main
 
 def main(): 
-    feature_list = ["odi_1",                #1
-                    "odi_2",                #2
-                    "pSDBg",                #3
-                    "pSDBg_roughness",      #4  
-                    "pSDBg_stdev_slope",    #5
-                    "pSDBr"]                #6
+    feature_list = ['Cyan',
+                    'Black',
+                    'NDWI',
+                    'pSDBg',
+                    'pSDBr',
+                    'pSDBg Standard Deviation of Slope',
+                    'pSDBg Roughness']               
    
-    # inputs   
-    training_composites = [r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_parrish_composite.tif",
-                           r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_parrish_composite.tif",
-                           r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_parrish_composite.tif",
-                           r"P:\Thesis\Training\FLKeys\_8Band_DeepVessel\_Composite\FLKeys_Extents_DeepVessel_parrish_composite.tif"
-                          ]
+    # inputs 
+    # odi 1
+    # training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_5Bands\\_Composite\\FLKeys_Extents_DeepVessel_5Bands_composite_20230328_1248.tif', 
+    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_5Bands\\_Composite\\FLKeys_Training_5Bands_composite_20230328_1248.tif', 
+    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_5Bands\\_Composite\\Ponce_Obvious_5Bands_composite_20230328_1248.tif', 
+    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_5Bands\\_Composite\\StCroix_Extents_TF_5Bands_composite_20230328_1248.tif'
+    #                       ]
+
+    # all
+    training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_6Bands\\_Composite\\FLKeys_Extents_DeepVessel_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_6Bands\\_Composite\\FLKeys_Training_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_6Bands\\_Composite\\Ponce_Obvious_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_6Bands\\_Composite\\StCroix_Extents_TF_7Bands_composite_20230329_1634.tif']
     
     training_labels = [r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
                        r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif",
@@ -395,34 +408,13 @@ def main():
     training_list = pair_composite_with_labels(training_composites, training_labels)
     
     # models
-    model_options = [RandomForestClassifier(n_estimators=50, n_jobs=n_jobs,
-                                            random_state=random_state, oob_score=True),
-                     RandomForestClassifier(n_estimators=200, n_jobs=n_jobs,
-                                            random_state=random_state, oob_score=True),
-                     RandomForestClassifier(n_estimators=400, n_jobs=n_jobs,
-                                                             random_state=random_state, oob_score=True),
-                     RandomForestClassifier(n_estimators=800, n_jobs=n_jobs,
-                                                             random_state=random_state, oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=5, oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=25, oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=125, oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=625, oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=5, min_samples_leaf=5,
-                                                             oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=25, min_samples_leaf=25,
-                                                             oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=125, min_samples_leaf=125,
-                                                             oob_score=True),
-                     RandomForestClassifier(n_estimators=100, n_jobs=n_jobs,
-                                                             random_state=random_state, min_samples_split=625, min_samples_leaf=625,
-                                                             oob_score=True)
+    model_options = [RandomForestClassifier(n_estimators=100, 
+                                            random_state=random_state, 
+                                            n_jobs=n_jobs,
+                                            oob_score=True),
+                     HistGradientBoostingClassifier(learning_rate=0.2, 
+                                                    l2_regularization=0.2,
+                                                    random_state=random_state)
                     ]
     
     # output
@@ -435,10 +427,10 @@ def main():
         y_train, y_metadata, y_bounds = shape_multiple_labels(training_list)
         
         # compute_kfold(model_options, x_train, y_train, n_splits=5, stratified=True)
-        compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
+        # compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
     
-        # train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
-        #             model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
+                    model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
     elif num_inputs == 1: # single training input
         x_train, x_metadata, x_bounds = shape_single_composite(training_list[0])
         y_train, y_metadata, y_bounds = shape_single_label(training_list[1])

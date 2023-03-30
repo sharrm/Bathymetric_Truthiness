@@ -166,8 +166,8 @@ def write_raster(raster, img_meta, output_path):
     return None
 
 # compute intersection over union results
-def compute_iou(test_mask, im_predicted, write_iou, prediction_path, metadata):
-    print(f'\nPerforming intersection over union analysis on {test_mask}')
+def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, metadata):
+    print(f'--Performing intersection over union analysis on {test_mask}')
     bandmask = rasterio.open(test_mask).read(1)
     iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
     print(f'--Weighted Mean IOU: {iou_score:.3f}')
@@ -175,15 +175,17 @@ def compute_iou(test_mask, im_predicted, write_iou, prediction_path, metadata):
     differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
     differences = np.where(bandmask > im_predicted, 3, differences)
     
-    false_positives = np.count_nonzero(differences == 5)
-    false_negatives = np.count_nonzero(differences == 3)
-    print(f'\nNumber of false positives: {false_positives:,}')
-    print(f'Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
-    print(f'Number of false_negatives: {false_negatives:,}')
-    print(f'Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
+    if iou_metrics:
+        false_positives = np.count_nonzero(differences == 5)
+        false_negatives = np.count_nonzero(differences == 3)
+        print(f'\n--Number of false positives: {false_positives:,}')
+        print(f'--Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
+        print(f'--Number of false_negatives: {false_negatives:,}')
+        print(f'--Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
     
-    plot_title = 'IOU'
-    plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
+    if plot_iou:
+        plot_title = plot_title + '_IOU'
+        plotImage(iou_colorMap(differences),iou_labels,iou_cmap,plot_title)
     
     if write_iou:
         difference_path = prediction_path.replace('prediction_', 'prediction_diff_')
@@ -191,17 +193,12 @@ def compute_iou(test_mask, im_predicted, write_iou, prediction_path, metadata):
     return None
 
 # use model for prediction
-def predict_img(pkl, model, unseen_img, write_prediction, perform_iou, write_iou, test_mask):
-    u_img, u_metadata, u_bounds = read_image(unseen_img)
-    print(f'Read raster to predict: {unseen_img}')
-    
-    im_predicted, X_new, rc = shape_feature_array(u_img)
-    
-    print('Predicting...')
+def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, write_prediction, iou_metrics, plot_iou, perform_iou, write_iou, test_mask):
+    print('--Predicting...')
     prediction = model.predict(X_new)
     im_predicted[rc[:,0],rc[:,1]] = prediction
     
-    print('Plotting...')
+    print('--Plotting...')
     plot_title = os.path.basename(pkl).split('_202')[0]
     plotImage(tf_colorMap(im_predicted),tf_labels,tf_cmap,plot_title)
 
@@ -216,7 +213,7 @@ def predict_img(pkl, model, unseen_img, write_prediction, perform_iou, write_iou
         
     # intersection over union
     if perform_iou:
-        compute_iou(test_mask, im_predicted, write_iou, prediction_path, u_metadata)
+        compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, u_metadata)
     return im_predicted
 
 # pair composite image with labels
@@ -235,34 +232,56 @@ def pair_composite_with_labels(test_rasters, test_labels):
 
 def main():
     # inputs
-    test_models = [r"P:\Thesis\Models\RF_6Bands_4Inputs_100Trees_20230324_1156.pkl"
-                  ]
+    test_models = [r'P:\Thesis\Models\RF_7B_4In_100Trees_1leaf_2split_20230329_1636.pkl',
+                   r'P:\Thesis\Models\Hist_7B_4In_LR0.2_L20.2_20230329_1636.pkl'
+                   ]
     
-    test_composites = [r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Extents_NoIsland_parrish_composite.tif",
-                       r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_parrish_composite.tif",
-                       r"P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_parrish_composite.tif",
-                       r"P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_parrish_composite.tif"
-                       ]
+    test_composites = ['P:\\Thesis\\Test Data\\_New_Feature_Building\\GreatLakes\\_Features_6Bands\\_Composite\\GreatLakes_Mask_NoLand_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\Niihau\\_Features_6Bands\\_Composite\\Niihua_Mask_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\PuertoReal\\_Features_6Bands\\_Composite\\Puerto_Real_Smaller_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\Saipan\\_Features_6Bands\\_Composite\\Saipan_Extents_NoIsland_7Bands_composite_20230329_1634.tif']
+    
     test_labels = [r"P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif",
                    r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
                    r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif",
                    r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
                    ]
     
+    prediction_options = {'write_prediction': False,
+                          'perform_iou': True,
+                          'iou_metrics': False,
+                          'plot_iou': False,
+                          'write_iou': False,
+                         }
+    
     prediction_list = pair_composite_with_labels(test_composites, test_labels)
     
-    # predict with all input models and images
-    for pkl in test_models:
-        print(f'Loading {pkl}')
-        model = pickle.load(open(pkl, 'rb'))
-        print(f'--Loaded model: {model}')
+    for unseen_img in prediction_list:
+        u_img, u_metadata, u_bounds = read_image(unseen_img[0])
+        print(f'Read raster to predict: {unseen_img[0]}')
         
-        for unseen_img in prediction_list:
-            predict_img(pkl, model, unseen_img[0], write_prediction=True, 
-                                       perform_iou=True, write_iou=True, test_mask=unseen_img[1])
-
-        print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+        im_predicted, X_new, rc = shape_feature_array(u_img)
+    
+        for pkl in test_models:
+            model = pickle.load(open(pkl, 'rb'))
+            print(f'--Loaded model: {model}')
+            
+            predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
+            model = None
+    
+            print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+        print('------------------------------------------------------------------------\n')
     return None
+
+    # predict with all input models and images
+    # for pkl in test_models:
+    #     print(f'Loading {pkl}')
+    #     model = pickle.load(open(pkl, 'rb'))
+    #     print(f'--Loaded model: {model}')
+        
+    #     for unseen_img in prediction_list:
+    #         predict_img(pkl, model, unseen_img[0], **prediction_options, test_mask=unseen_img[1])
+
+    #     print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+    #     print('------------------------------------------------------------------------')
+    # return None
 
 if __name__ == '__main__':
     start = current_time.strftime('%H:%M:%S')
@@ -271,5 +290,3 @@ if __name__ == '__main__':
     runtime = time.time() - start_time
     print(f'\nTotal elapsed time: {runtime:.1f} seconds / {(runtime/60):.1f} minutes')
    
-
-

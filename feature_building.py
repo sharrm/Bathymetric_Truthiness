@@ -136,7 +136,7 @@ class Features:
             print('\nCreating composite failed...')
         return out_composite_name
     
-    def feature_options(self, blue, green, red, nir, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
+    def feature_options(self, blue, green, red, nir, cmyk, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
         # list of bands
         rasters = os.listdir(self.rgbnir_dir)
 
@@ -174,45 +174,55 @@ class Features:
         green_aoi = Features.mask_to_aoi(self, surface_reflectance['green band'], surface_reflectance['green name'])
         red_aoi = Features.mask_to_aoi(self, surface_reflectance['red band'], surface_reflectance['red name'])
         nir_aoi = Features.mask_to_aoi(self, surface_reflectance['nir band'], surface_reflectance['nir name'])
-
+        
         if blue:
             self.composite_features_list.append(blue_aoi)
-            features_list.append("'Blue Band'")
+            features_list.append("'Blue Band',")
         if green:
             self.composite_features_list.append(green_aoi)
-            features_list.append("'Green Band'")
+            features_list.append("'Green Band',")
         if red:
             self.composite_features_list.append(red_aoi)
-            features_list.append("'Red Band'")
+            features_list.append("'Red Band',")
         if nir:
             self.composite_features_list.append(nir_aoi)
-            features_list.append("'NIR Band'")
+            features_list.append("'NIR Band',")
+        if cmyk:
+            cmykTF, cyan_aoi, magenta_aoi, yellow_aoi, black_aoi = sdb.rgb_to_cmyk(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
+            self.composite_features_list.append(cyan_aoi)
+            self.composite_features_list.append(magenta_aoi)
+            self.composite_features_list.append(yellow_aoi)
+            self.composite_features_list.append(black_aoi)
+            features_list.append("'Cyan',")
+            features_list.append("'Magenta',")
+            features_list.append("'Yellow',")
+            features_list.append("'Black',")
         if odi_1:
             odi_1 = Features.ODI_1(self, blue_aoi, green_aoi, odi1_name='odi_1.tif')
             self.composite_features_list.append(odi_1)
-            features_list.append("'ODI 1'")
+            features_list.append("'ODI 1',")
         if odi_2:
             odi_2 = Features.ODI_2(self, blue_aoi, green_aoi, odi2_name='odi_1.tif')
             self.composite_features_list.append(odi_2)
-            features_list.append("'ODI 2'")
+            features_list.append("'ODI 2',")
         if ndwi:
             ndwi_aoi = Features.ODI_2(self, nir_aoi, green_aoi, odi2_name='ndwi.tif')
             self.composite_features_list.append(ndwi_aoi)
-            features_list.append("'NDWI'")
+            features_list.append("'NDWI',")
         if pSDBg:
             pSDBg_aoi = Features.pSDB(self, blue_aoi, green_aoi, rol_name='pSDBg.tif')
             self.composite_features_list.append(pSDBg_aoi)
-            features_list.append("'pSDBg'")
+            features_list.append("'pSDBg',")
         if pSDBr:
             pSDBr_aoi = Features.pSDB(self, blue_aoi, red_aoi, rol_name='pSDBr.tif')
             self.composite_features_list.append(pSDBr_aoi)
-            features_list.append("'pSDBr'")
+            features_list.append("'pSDBr',")
         if pSDBg_roughness and pSDBg:
             pSDBg_stdevslope_aoi, pSDBg_roughness_aoi = Features.pSDBg_surface_roughness(self, pSDBg_aoi, window_size)
             self.composite_features_list.append(pSDBg_stdevslope_aoi)
             self.composite_features_list.append(pSDBg_roughness_aoi)
-            features_list.append("'pSDBg Standard Deviation of Slope'")
-            features_list.append("'pSDBg Roughness'")
+            features_list.append("'pSDBg Standard Deviation of Slope',")
+            features_list.append("'pSDBg Roughness',")
         
         num_bands = len(features_list)
         
@@ -277,6 +287,23 @@ def main():
     for loc in extent_dir:
         [maskSHP_dir.append(os.path.join(loc, shp)) for shp in os.listdir(loc) if shp.endswith('.shp')]
 
+    ft_options = {'blue': False, 
+                  'green':False, 
+                  'red':  False, 
+                  'nir':  False,
+                  'cmyk': True,
+                  'odi_1': False,
+                  'odi_2': False,
+                  'ndwi': True,
+                  'pSDBg': True,
+                  'pSDBr': True,
+                  'pSDBg_roughness':True,
+                  'window_size':7}
+    
+    num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
+    if ft_options['cmyk']:
+        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 4 )
+    
     final_composite_list = []
 
     for rgbnir_dir in img_dirs:
@@ -285,21 +312,7 @@ def main():
                 print('Creating features based on:')
                 print(f'--Imagery: {rgbnir_dir}')
                 print(f'--AOI: {maskSHP}')
-
-                ft_options = {'blue': False, 
-                              'green':False, 
-                              'red':  False, 
-                              'nir':  False,
-                              'odi_1': True,
-                              'odi_2': True,
-                              'ndwi': True,
-                              'pSDBg': True,
-                              'pSDBr': True,
-                              'pSDBg_roughness':True,
-                              'window_size':7}
-                
-                num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1)# exclude window size and include two for roughness
-                
+                                
                 fts = Features(rgbnir_dir, maskSHP, num_options)
                 composite_name, features = fts.feature_options(**ft_options)
                 final_composite_list.append(composite_name)
