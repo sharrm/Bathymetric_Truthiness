@@ -380,14 +380,24 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
 # %% -- main
 
 def main(): 
-    feature_list = ['Cyan',
-                    'Black',
-                    'NDWI',
-                    'pSDBg',
-                    'pSDBr',
-                    'pSDBg Standard Deviation of Slope',
-                    'pSDBg Roughness']               
-   
+    feature_list = ['Blue Band',
+    'Green Band',
+    'Red Band',
+    'NIR Band',
+    'Cyan',
+    'Black',
+    'Hue',
+    'Saturation',
+    'Value',
+    'ODI 1',
+    'ODI 2',
+    'NDWI',
+    'pSDBg',
+    'pSDBr',
+    'pSDBg Standard Deviation of Slope',
+    'pSDBg Roughness'
+        ]
+
     # inputs 
     # odi 1
     # training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_5Bands\\_Composite\\FLKeys_Extents_DeepVessel_5Bands_composite_20230328_1248.tif', 
@@ -397,7 +407,7 @@ def main():
     #                       ]
 
     # all
-    training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_6Bands\\_Composite\\FLKeys_Extents_DeepVessel_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_6Bands\\_Composite\\FLKeys_Training_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_6Bands\\_Composite\\Ponce_Obvious_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_6Bands\\_Composite\\StCroix_Extents_TF_7Bands_composite_20230329_1634.tif']
+    training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_16Bands\\_Composite\\FLKeys_Extents_DeepVessel_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_16Bands\\_Composite\\FLKeys_Training_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_16Bands\\_Composite\\Ponce_Obvious_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_16Bands\\_Composite\\StCroix_Extents_TF_16Bands_composite_20230331_1249.tif']
     
     training_labels = [r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
                        r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif",
@@ -411,10 +421,10 @@ def main():
     model_options = [RandomForestClassifier(n_estimators=100, 
                                             random_state=random_state, 
                                             n_jobs=n_jobs,
-                                            oob_score=True),
-                     HistGradientBoostingClassifier(learning_rate=0.2, 
-                                                    l2_regularization=0.2,
-                                                    random_state=random_state)
+                                            oob_score=True)
+                     # HistGradientBoostingClassifier(learning_rate=0.2, 
+                     #                                l2_regularization=0.2,
+                     #                                random_state=random_state)
                     ]
     
     # output

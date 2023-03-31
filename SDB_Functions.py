@@ -88,41 +88,92 @@ def rgb_to_cmyk(red_name, green_name, blue_name, output_dir):
     green_band = rasterio.open(green_name).read(1)
     red_band = rasterio.open(red_name).read(1)
     
-    RGB_SCALE = 255
     CMYK_SCALE = 100
 
-    # rgb [0,255] -> cmy [0,1]
-    # c = 1 - red_int/ RGB_SCALE
-    # m = 1 - green_band / RGB_SCALE
-    # y = 1 - blue_band / RGB_SCALE
-    
-    c = 1 - red_band
-    m = 1 - green_band
-    y = 1 - blue_band
+    # sentinel 2 values out of 1: RGB -> CMYK
+    ck = 1 - red_band
+    mk = 1 - green_band
+    yk = 1 - blue_band
 
     # extract out k [0, 1]
-    min_cmy = np.minimum.reduce([c, m, y])
-    ck = (c - min_cmy) / (1 - min_cmy)
-    mk = (m - min_cmy) / (1 - min_cmy)
-    yk = (y - min_cmy) / (1 - min_cmy)
-    k = min_cmy
-    
+    k = np.minimum.reduce([ck, mk, yk]) # element-wise minimum 
+    c = (ck - k) / (1 - k)
+    m = (mk - k) / (1 - k)
+    y = (yk - k) / (1 - k)
+
     # rescale to the range [0,CMYK_SCALE]
-    cmyk = [ck * CMYK_SCALE, mk * CMYK_SCALE, yk * CMYK_SCALE, k * CMYK_SCALE]
+    cmyk = [c * CMYK_SCALE, m * CMYK_SCALE, y * CMYK_SCALE, k * CMYK_SCALE]
     
     cyan_out = os.path.join(output_dir, 'cyan.tif')
     magenta_out = os.path.join(output_dir, 'magenta.tif')
     yellow_out = os.path.join(output_dir, 'yellow.tif')
     black_out = os.path.join(output_dir, 'black.tif')
     
-    color_name = [cyan_out, magenta_out, yellow_out, black_out]
+    cmyk_name = [cyan_out, magenta_out, yellow_out, black_out]
     
-    for color_arr, outraster_name in zip(cmyk, color_name):
+    for cmyk_arr, outraster_name in zip(cmyk, cmyk_name):
         
         with rasterio.open(outraster_name, "w", **out_meta) as dest:
-            dest.write(color_arr,1)
+            dest.write(cmyk_arr,1)
 
-    return True, *color_name
+    return True, *cmyk_name
+
+# https://www.geeksforgeeks.org/program-change-rgb-color-model-hsv-color-model/
+def rgb_to_hsv(red_name, green_name, blue_name, output_dir):
+    out_meta = rasterio.open(blue_name).meta
+    blue_band = rasterio.open(blue_name).read(1)
+    green_band = rasterio.open(green_name).read(1)
+    red_band = rasterio.open(red_name).read(1)
+  
+    # h, s, v = hue, saturation, value
+    cmax = np.maximum.reduce([red_band, green_band, blue_band])    # maximum of r, g, b
+    cmin = np.minimum.reduce([red_band, green_band, blue_band])    # minimum of r, g, b
+    diff = cmax-cmin       # diff of cmax and cmin.
+  
+    # if cmax and cmin are equal then h = 0
+    # if np.array_equal(cmax, cmin): 
+    #     h = 0
+      
+    # # if cmax equal r then compute h
+    # elif np.array_equal(cmax, red_band): 
+    #     h = (60 * ((green_band - blue_band) / diff) + 360) % 360
+  
+    # # if cmax equal g then compute h
+    # elif np.array_equal(cmax,green_band):
+    #     h = (60 * ((blue_band - red_band) / diff) + 120) % 360
+  
+    # # if cmax equal b then compute h
+    # elif np.array_equal(cmax, blue_band):
+    #     h = (60 * ((red_band - green_band) / diff) + 240) % 360
+  
+    h = np.where(cmax == cmin, 0, 0)
+    h = np.where(cmax == red_band, (60 * ((green_band - blue_band) / diff) + 360) % 360, h)
+    h = np.where(cmax == green_band, (60 * ((blue_band - red_band) / diff) + 120) % 360, h)
+    h = np.where(cmax == blue_band, (60 * ((red_band - green_band) / diff) + 240) % 360, h)
+  
+    # if cmax equal zero
+    if not np.any(cmax): # cmax == 0:
+        s = 0
+    else:
+        s = (diff / cmax) * 100
+  
+    # compute v
+    v = cmax * 100
+    
+    hsv = [h, s, v]
+    
+    hue_out = os.path.join(output_dir, 'hue.tif')
+    saturation_out = os.path.join(output_dir, 'saturation.tif')
+    value_out = os.path.join(output_dir, 'value.tif')
+
+    hsv_name = [hue_out, saturation_out, value_out]
+    
+    for hsv_arr, outraster_name in zip(hsv, hsv_name):
+        
+        with rasterio.open(outraster_name, "w", **out_meta) as dest:
+            dest.write(hsv_arr,1)
+
+    return True, *hsv_name
 
 def odi_1(blue_name, green_name, odi_1_name, output_dir):
     out_meta = rasterio.open(blue_name).meta

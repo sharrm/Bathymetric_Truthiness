@@ -232,11 +232,10 @@ def pair_composite_with_labels(test_rasters, test_labels):
 
 def main():
     # inputs
-    test_models = [r'P:\Thesis\Models\RF_7B_4In_100Trees_1leaf_2split_20230329_1636.pkl',
-                   r'P:\Thesis\Models\Hist_7B_4In_LR0.2_L20.2_20230329_1636.pkl'
+    test_models = [r'P:\Thesis\Models\RF_16B_4In_100Trees_1leaf_2split_20230331_1252.pkl'
                    ]
     
-    test_composites = ['P:\\Thesis\\Test Data\\_New_Feature_Building\\GreatLakes\\_Features_6Bands\\_Composite\\GreatLakes_Mask_NoLand_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\Niihau\\_Features_6Bands\\_Composite\\Niihua_Mask_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\PuertoReal\\_Features_6Bands\\_Composite\\Puerto_Real_Smaller_7Bands_composite_20230329_1634.tif', 'P:\\Thesis\\Test Data\\_New_Feature_Building\\Saipan\\_Features_6Bands\\_Composite\\Saipan_Extents_NoIsland_7Bands_composite_20230329_1634.tif']
+    test_composites = ['P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Airport_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Harbor_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Offshore_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Halfmoon\\_Features_10Bands\\_Composite\\DryTortugas_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Halfmoon\\_Features_10Bands\\_Composite\\Halfmoon_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_10Bands\\_Composite\\Moorehead4_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_10Bands\\_Composite\\Moorehead_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\NWHI\\_Features_10Bands\\_Composite\\NWHI_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Portland\\_Features_10Bands\\_Composite\\OldOrchard_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Portland\\_Features_10Bands\\_Composite\\Portland_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\WakeIsland\\_Features_10Bands\\_Composite\\WakeIsland_Extents_10Bands_composite_20230331_1139.tif']
     
     test_labels = [r"P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif",
                    r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
@@ -245,29 +244,48 @@ def main():
                    ]
     
     prediction_options = {'write_prediction': False,
-                          'perform_iou': True,
+                          'perform_iou': False,
                           'iou_metrics': False,
                           'plot_iou': False,
                           'write_iou': False,
                          }
     
-    prediction_list = pair_composite_with_labels(test_composites, test_labels)
+    with_mask = False
     
-    for unseen_img in prediction_list:
-        u_img, u_metadata, u_bounds = read_image(unseen_img[0])
-        print(f'Read raster to predict: {unseen_img[0]}')
+    if with_mask:
+        prediction_list = pair_composite_with_labels(test_composites, test_labels)
         
-        im_predicted, X_new, rc = shape_feature_array(u_img)
-    
-        for pkl in test_models:
-            model = pickle.load(open(pkl, 'rb'))
-            print(f'--Loaded model: {model}')
+        for unseen_img in prediction_list:
+            u_img, u_metadata, u_bounds = read_image(unseen_img[0])
+            print(f'Read raster to predict: {unseen_img[0]}')
             
-            predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
-            model = None
-    
-            print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
-        print('------------------------------------------------------------------------\n')
+            im_predicted, X_new, rc = shape_feature_array(u_img)
+        
+            for pkl in test_models:
+                model = pickle.load(open(pkl, 'rb'))
+                print(f'--Loaded model: {model}')
+                
+                predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
+                model = None
+        
+                print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+            print('------------------------------------------------------------------------\n')
+    else:
+        for unseen_img in test_composites:
+            u_img, u_metadata, u_bounds = read_image(unseen_img)
+            print(f'Read raster to predict: {unseen_img}')
+            
+            im_predicted, X_new, rc = shape_feature_array(u_img)
+        
+            for pkl in test_models:
+                model = pickle.load(open(pkl, 'rb'))
+                print(f'--Loaded model: {model}')
+                
+                predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=None)
+                model = None
+        
+                print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+            print('------------------------------------------------------------------------\n')
     return None
 
     # predict with all input models and images
