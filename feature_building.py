@@ -136,7 +136,7 @@ class Features:
             print('\nCreating composite failed...')
         return out_composite_name
     
-    def feature_options(self, blue, green, red, nir, cmyk, hsv, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
+    def feature_options(self, blue, green, red, red_edge, nir, cmyk, hsv, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
         # list of bands
         rasters = os.listdir(self.rgbnir_dir)
 
@@ -158,6 +158,10 @@ class Features:
                     surface_reflectance['red name'] = os.path.join(self.feature_dir, 
                                                          'masked_' + os.path.basename(band)[-7:-4] + '.tif')
                     surface_reflectance['red band'] = os.path.join(self.rgbnir_dir, band)
+                elif '704' in band or 'B5' in band: # red wavelength (665nm)
+                    surface_reflectance['red edge name'] = os.path.join(self.feature_dir, 
+                                                         'masked_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['red edge band'] = os.path.join(self.rgbnir_dir, band)
                 elif '833' in band or 'B8' in band: # red wavelength (665nm)
                     surface_reflectance['nir name'] = os.path.join(self.feature_dir, 
                                                          'masked_' + os.path.basename(band)[-7:-4] + '.tif')
@@ -173,20 +177,24 @@ class Features:
         blue_aoi = Features.mask_to_aoi(self, surface_reflectance['blue band'], surface_reflectance['blue name'])
         green_aoi = Features.mask_to_aoi(self, surface_reflectance['green band'], surface_reflectance['green name'])
         red_aoi = Features.mask_to_aoi(self, surface_reflectance['red band'], surface_reflectance['red name'])
+        red_edge_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge band'], surface_reflectance['red edge name'])
         nir_aoi = Features.mask_to_aoi(self, surface_reflectance['nir band'], surface_reflectance['nir name'])
         
         if blue:
             self.composite_features_list.append(blue_aoi)
-            features_list.append("'Blue Band',")
+            features_list.append("'Blue',")
         if green:
             self.composite_features_list.append(green_aoi)
-            features_list.append("'Green Band',")
+            features_list.append("'Green',")
         if red:
             self.composite_features_list.append(red_aoi)
-            features_list.append("'Red Band',")
+            features_list.append("'Red',")
+        if red_edge:
+            self.composite_features_list.append(red_edge_aoi)
+            features_list.append("'Red Edge',")
         if nir:
             self.composite_features_list.append(nir_aoi)
-            features_list.append("'NIR Band',")
+            features_list.append("'NIR',")
         if cmyk:
             cmykTF, cyan_aoi, magenta_aoi, yellow_aoi, black_aoi = sdb.rgb_to_cmyk(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
             self.composite_features_list.append(cyan_aoi)
@@ -283,7 +291,8 @@ def rgb_composite(rgb_dir):
 def main():    
     # input imagery
     # train_test = [r"P:\Thesis\Training\_New_Feature_Building"] # training
-    train_test = [r"P:\Thesis\Test Data\_Turbid_Tests", r"P:\Thesis\Test Data\_New_Feature_Building"] # testing
+    train_test = [#r"P:\Thesis\Test Data\_Turbid_Tests", 
+                   r"P:\Thesis\Test Data\_New_Feature_Building"] # testing
     
     img_dirs = []
     for loc in train_test:
@@ -291,31 +300,35 @@ def main():
     
     # input aoi
     # extent_dir = [r"P:\Thesis\Extents\_Training"] # training    
-    extent_dir = [r"P:\Thesis\Extents\_Turbid_Tests", r"P:\Thesis\Extents\_Testing"] # testing
+    extent_dir = [#r"P:\Thesis\Extents\_Turbid_Tests", 
+                   r"P:\Thesis\Extents\_Testing"] # testing
     
     maskSHP_dir = []
     for loc in extent_dir:
         [maskSHP_dir.append(os.path.join(loc, shp)) for shp in os.listdir(loc) if shp.endswith('.shp')]
 
-    ft_options = {'blue': True, 
-                  'green':True, 
-                  'red':  True, 
-                  'nir':  True,
-                  'cmyk': True,
-                  'hsv': True,
-                  'odi_1': True,
-                  'odi_2': True,
-                  'ndwi': True,
-                  'pSDBg': True,
-                  'pSDBr': True,
-                  'pSDBg_roughness':True,
+    ft_options = {'blue': False, 
+                  'green':False, 
+                  'red':  False, 
+                  'red_edge': True,
+                  'nir':  False,
+                  'cmyk': False,
+                  'hsv': False,
+                  'odi_1': False,
+                  'odi_2': False,
+                  'ndwi': False,
+                  'pSDBg': False,
+                  'pSDBr': False,
+                  'pSDBg_roughness':False,
                   'window_size':7}
     
-    num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
-    if not ft_options['pSDBg_roughness']:
-        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )
-    elif ft_options['cmyk']:
-        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 4 ) # 2 without hsv
+    # num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
+    # if not ft_options['pSDBg_roughness']:
+    #     num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )
+    # elif ft_options['cmyk']:
+    #     num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 4 ) # 2 without hsv
+    
+    num_options = str(1)
     
     final_composite_list = []
 
