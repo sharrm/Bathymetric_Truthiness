@@ -123,44 +123,27 @@ def padding3D(image,s_patch):
     image = np.pad(image, dim, mode='constant', constant_values=0)
     return image,h,w
 
+
 # %% hyper parameters
 n_classes = 3 #-- number of classes for segmentation (road markings, road surface, unclassified)
 # n_images = 150  #-- number of subset  # 330
 s_patch = 128 #-- patch size # 128
 s_step = 64 #-- step size, use smaller step size for overlap # 64
-s_batch = 16 # batch size
+s_batch = 14 # batch size 16
 eps = 150 # epochs
 
+
 # %% - data
-# composite_rasters = [r"P:\Thesis\Training\FLKeys\_8Band\_Composite\FLKeys_Training_composite.tif",
-#                     r"P:\Thesis\Training\StCroix\_8Band\_Composite\StCroix_Extents_TF_composite.tif",
-#                     r"P:\Thesis\Training\FLKeys\_8Band_DeepVessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-#                     r"P:\Thesis\Training\Ponce\_8Band\_Composite\Ponce_Obvious_composite.tif"
-#                     ]
 
-# composite_rasters = [r"P:\Thesis\Training\FLKeys\_7Band\_Composite\FLKeys_Training_composite.tif",
-#                     r"P:\Thesis\Training\StCroix\_7Band\_Composite\StCroix_Extents_composite.tif",
-#                     r"P:\Thesis\Training\FLKeys\_7Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-#                     r"P:\Thesis\Training\Ponce\_7Band\_Composite\Ponce_Obvious_composite.tif"
-#                     ]
 
-# composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band\_Composite\FLKeys_Training_composite.tif",
-#                     r"P:\Thesis\Training\StCroix\_6Band\_Composite\StCroix_Extents_composite.tif",
-#                     r"P:\Thesis\Training\FLKeys\_6Band_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-#                     r"P:\Thesis\Training\Ponce\_6Band\_Composite\Ponce_Obvious_composite.tif"
-#                     ]
+composite_rasters = ['C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Training_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Obvious_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_TF_9Bands_composite_20230407_1104.tif']
 
-composite_rasters = [r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness\_Composite\FLKeys_Training_composite.tif",
-                    r"P:\Thesis\Training\StCroix\_6Band_pSDB_roughness\_Composite\StCroix_Extents_composite.tif",
-                    r"P:\Thesis\Training\FLKeys\_6Band_pSDB_roughness_vessel\_Composite\FLKeys_Extents_DeepVessel_composite.tif",
-                    r"P:\Thesis\Training\Ponce\_6Band_pSDB_roughness\_Composite\Ponce_Obvious_composite.tif"
-                    ]
+training_rasters = [r"C:\_Thesis\Masks\Train\FLKeys_Extents_DeepVessel_Training.tif",
+                        r"C:\_Thesis\Masks\Train\FLKeys_Training.tif",
+                        r"C:\_Thesis\Masks\Train\Ponce_Obvious_Training.tif",
+                        r"C:\_Thesis\Masks\Train\StCroix_Extents_TF_Training.tif"
+                      ]
 
-training_rasters = [r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
-                    r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
-                    r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif",
-                    r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif"
-                    ]
 
 # %% load data  
 #-- read image data
@@ -235,7 +218,7 @@ history = model.fit(X_train, Y_train_cat,
 print("\n--- %.3f seconds ---\n" % (time.time() - start_time))
 #-- save the model for future use
 current_time = datetime.datetime.now()
-model_name = r'P:\Thesis\Models\UNet\UNet_6bands_pSDBrough_150epoch_128patchX64step_' + current_time.strftime('%Y%m%d_%H%M') + '.hdf5'
+model_name = r'P:\Thesis\Models\UNet\UNet_9bands_150epoch_128patchX64step_' + current_time.strftime('%Y%m%d_%H%M') + '.hdf5'
 model.save(model_name)
 #-- plot the training and validation accuracy and loss at each epoch
 #-- note that your results may vary given the stochastic nature of the algorithm

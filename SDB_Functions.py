@@ -16,14 +16,13 @@ from rasterio.enums import MergeAlg
 import rasterio.mask
 from rasterio.plot import show
 from rasterio.transform import from_bounds
-import richdem as rd
+# import richdem as rd
 from osgeo import gdal
 from scipy.ndimage import uniform_filter
 # from scipy.ndimage import generic_filter
 # from scipy.ndimage import sobel, prewitt, laplace, gaussian_gradient_magnitude
 # from scipy.ndimage import convolve
 import sys
-import geopandas as gpd
 # from skimage import feature, filters
 # from osgeo import gdal
 
@@ -81,6 +80,36 @@ def mask_imagery(band, in_shp, masked_raster_name):
     # close the file
     dest = None
     return True, masked_raster_name
+
+def band_ratios(red_name, green_name, blue_name, nir_name, output_dir):
+    out_meta = rasterio.open(blue_name).meta
+    blue_band = rasterio.open(blue_name).read(1)
+    green_band = rasterio.open(green_name).read(1)
+    red_band = rasterio.open(red_name).read(1)
+    nir_band = rasterio.open(nir_name).read(1)
+    
+    green_blue = green_band / blue_band
+    red_blue = red_band / blue_band
+    red_green = red_band / green_band
+    nir_green = nir_band / green_band
+    nir_red = nir_band / red_band
+    
+    ratios = [green_blue, red_blue, red_green, nir_green, nir_red]
+    
+    gb_out = os.path.join(output_dir, 'green_blue.tif')
+    rb_out = os.path.join(output_dir, 'red_blue.tif')
+    rg_out = os.path.join(output_dir, 'red_green.tif')
+    ng_out = os.path.join(output_dir, 'nir_green.tif')
+    nr_out = os.path.join(output_dir, 'nir_red.tif')
+    
+    ratio_names = [gb_out, rb_out, rg_out, ng_out, nr_out]
+    
+    for ratio_arr, outraster_name in zip(ratios, ratio_names):
+        
+        with rasterio.open(outraster_name, "w", **out_meta) as dest:
+            dest.write(ratio_arr,1)
+    
+    return True, *ratio_names
 
 def rgb_to_cmyk(red_name, green_name, blue_name, output_dir):
     out_meta = rasterio.open(blue_name).meta
@@ -151,14 +180,17 @@ def rgb_to_hsv(red_name, green_name, blue_name, output_dir):
     h = np.where(cmax == green_band, (60 * ((blue_band - red_band) / diff) + 120) % 360, h)
     h = np.where(cmax == blue_band, (60 * ((red_band - green_band) / diff) + 240) % 360, h)
   
-    # if cmax equal zero
-    if not np.any(cmax): # cmax == 0:
-        s = 0
-    else:
-        s = (diff / cmax) * 100
+    # # if cmax equal zero
+    # if not np.any(cmax): # cmax == 0:
+    #     s = 0
+    # else:
+    #     s = (diff / cmax) * 100
   
-    # compute v
-    v = cmax * 100
+    # # compute v
+    # v = cmax * 100
+    
+    s = 1 - ((3 / (red_band + blue_band + green_band)) * cmin)
+    v = (1/3) * (red_band + blue_band + green_band)
     
     hsv = [h, s, v]
     

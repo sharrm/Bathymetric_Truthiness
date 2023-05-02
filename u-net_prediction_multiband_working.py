@@ -93,50 +93,29 @@ def saveGTiff(im,gt,proj,i_ft,fileName):
 
 # %% hyper parameters
 s_patch = 128
-s_step = 64
+s_step = 128 # 64
 
 
 # %% - options
 # write_prediction = True
 write_prediction = False
 
-# 7 bands
-# predict_raster = r"P:\Thesis\Training\PuertoReal\_7Band\_Composite\Puerto_Real_Smaller_composite.tif"
-# predict_raster = r"P:\Thesis\Test Data\GreatLakes\_7Band_NoLand\_Composite\GreatLakes_Mask_NoLand_composite.tif"
-# predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_composite.tif"
-# predict_raster = r"P:\Thesis\Test Data\Niihua\_7Band\_Composite\Niihua_Mask_composite.tif"
+# predict_raster = 'C:\\_Thesis\\Data\\Testing\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20230407_1104.tif'
+# predict_raster = 'C:\\_Thesis\\Data\\Testing\\Niihau\\_Features_9Bands\\_Composite\\Niihua4_9Bands_composite_20230407_1104.tif'
+predict_raster = 'C:\\_Thesis\\Data\\Testing\\PuertoReal\\_Features_9Bands\\_Composite\\Puerto_Real_Smaller_9Bands_composite_20230407_1104.tif'
+# predict_raster = 'C:\\_Thesis\\Data\\Testing\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20230407_1104.tif'
 
-# input_model = r'P:\Thesis\Models\UNet\UNet_model_7bands_150epoch_128patchX64step20230228_1428.hdf5'
-
-# 8 bands
-# predict_raster = r"P:\Thesis\Test Data\TinianSaipan\_8Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
-# predict_raster = r"P:\Thesis\Test Data\Puerto Real\_8Band\_Composite\Puerto_Real_Smaller_composite.tif"
-# predict_raster = r'P:\Thesis\Test Data\GreatLakes\_8Band_Focused\_Composite\GreatLakes_Mask_NoLand_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\Niihua\_8Band\_Composite\Niihua_Mask_composite.tif'
-
-# input_model = r'P:\Thesis\Models\UNet\UNet_model_8bands_150epoch_128patchX64step_20230228_1514.hdf5'
-
-# predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band\_Composite\Saipan_Extents_NoIsland_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band\_Composite\Niihua_Mask_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band\_Composite\Puerto_Real_Smaller_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band\_Composite\GreatLakes_Mask_NoLand_composite.tif'
-
-# input_model = r'P:\Thesis\Models\UNet\UNet_model_6bands_150epoch_128patchX64step_20230228_1624.hdf5'
-
-# predict_raster = r'P:\Thesis\Test Data\TinianSaipan\_6Band_pSDB_roughness\_Composite\Saipan_Extents_NoIsland_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\Niihua\_6Band_pSDB_roughness\_Composite\Niihua_Mask_composite.tif'
-# predict_raster = r'P:\Thesis\Test Data\Puerto Real\_6Band_pSDB_roughness\_Composite\Puerto_Real_Smaller_composite.tif'
-predict_raster = r'P:\Thesis\Test Data\GreatLakes\_6Band_pSDB_roughness\_Composite\GreatLakes_Mask_NoLand_composite.tif'
-
-input_model = r'P:\Thesis\Models\UNet\UNet_6bands_pSDBrough_150epoch_128patchX64step_20230228_1754.hdf5'
+# input_model = r'P:\Thesis\Models\UNet\UNet_6bands_pSDBrough_150epoch_128patchX64step_20230413_1152.hdf5'
+input_model = r'P:\Thesis\Models\UNet\UNet_9bands_150epoch_128patchX64step_20230413_1624.hdf5'
 
 # IOU = False
 IOU = True
 
-# test_mask = r"P:\Thesis\Masks\Saipan_Mask_TF.tif"
-# test_mask = r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
-# test_mask = r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif"
-test_mask = r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif"
+# test_mask = r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif"
+# test_mask = r"C:\_Thesis\Masks\Test\Niihua_Mask_TF.tif"
+test_mask = r"C:\_Thesis\Masks\Test\PuertoReal_Mask_TF.tif"
+# test_mask = r"C:\_Thesis\Masks\Test\Saipan_Mask_NoIsland_TF.tif"
+
 
 # %% load data and model
 start_time = time.time()

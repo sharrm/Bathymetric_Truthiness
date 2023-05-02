@@ -17,7 +17,9 @@ import pandas as pd
 import pickle
 import rasterio
 # from pytictoc import TicToc
+from sklearn.metrics import classification_report, f1_score, recall_score, precision_score 
 from scipy.ndimage import median_filter #, gaussian_filter
+from skimage import morphology
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, ExtraTreesClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay, classification_report, jaccard_score
 from sklearn.model_selection import cross_val_score, learning_curve, StratifiedKFold
@@ -37,7 +39,7 @@ n_jobs = 5 # number of cores to use in sklearn processes
 
 current_time = datetime.datetime.now() # current time for file naming
 start_time = time.time() # start time for process tracking
-log_file = r"P:\Thesis\Test Data\_Logs\prediction_" + current_time.strftime('%Y%m%d_%H%M') + '.txt' # log file output name
+log_file = r"C:\_Thesis\_Logs\test_" + current_time.strftime('%Y%m%d_%H%M') + '.txt' # log file output name
 
 #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
 upper_limit = np.finfo(np.float32).max/10
@@ -167,21 +169,34 @@ def write_raster(raster, img_meta, output_path):
 
 # compute intersection over union results
 def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, metadata):
-    print(f'--Performing intersection over union analysis on {test_mask}')
+    print(f'Performing intersection over union analysis on {test_mask}')
     bandmask = rasterio.open(test_mask).read(1)
     iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
-    print(f'--Weighted Mean IOU: {iou_score:.3f}')
+    print(f'--Mean IOU: {iou_score}')
     
     differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
     differences = np.where(bandmask > im_predicted, 3, differences)
     
     if iou_metrics:
-        false_positives = np.count_nonzero(differences == 5)
-        false_negatives = np.count_nonzero(differences == 3)
-        print(f'\n--Number of false positives: {false_positives:,}')
-        print(f'--Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
-        print(f'--Number of false_negatives: {false_negatives:,}')
-        print(f'--Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
+        print('--Computing Precision, Recall, F1-Score...')
+        classification = classification_report(bandmask.flatten(), im_predicted.flatten())
+        print(f'--Classification Report:\n{classification}')
+        # prc = precision_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        # print (f'--Precision: {prc:.3f}') 
+        # rcll = recall_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        # print (f'--Recall: {rcll:.3f}') 
+        # f1 = f1_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        # print (f'--F1-Score: {f1:.3f}') 
+        # log_output(f',{prc:.3f},{rcll:.3f},{f1:.3f},{iou_score:.3f}')
+
+        # false_positives = np.count_nonzero(differences == 5)
+        # false_negatives = np.count_nonzero(differences == 3)
+        
+        
+        # print(f'\n--Number of false positives: {false_positives:,}')
+        # print(f'--Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
+        # print(f'--Number of false_negatives: {false_negatives:,}')
+        # print(f'--Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
     
     if plot_iou:
         plot_title = plot_title + '_IOU'
@@ -195,8 +210,25 @@ def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, writ
 # use model for prediction
 def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, write_prediction, iou_metrics, plot_iou, perform_iou, write_iou, test_mask):
     print('--Predicting...')
+    prediction_time = time.time()
     prediction = model.predict(X_new)
+    performance = round(prediction.size/(time.time() - prediction_time), -3)
+    print(f'****Prediction time: {(time.time() - prediction_time):.3f} {performance}')
+
     im_predicted[rc[:,0],rc[:,1]] = prediction
+    
+    # insert morphology
+    # pred_dilate = morphology.dilation(im_predicted)
+    # pred_erode = morphology.erosion(im_predicted)
+    # pred_dilate = morphology.dilation(pred_erode)
+    # pred_erode = morphology.erosion(pred_dilate)
+    # pred_erode = morphology.erosion(pred_erode)
+    # pred_dilate = morphology.dilation(pred_erode)
+    # pred_erode = morphology.erosion(pred_dilate)
+    # pred_dilate = morphology.dilation(pred_erode)
+    # pred_erode = morphology.erosion(pred_dilate)
+    # im_predicted = morphology.dilation(pred_erode)
+    # im_predicted = morphology.dilation(pred_dilate)
     
     print('--Plotting...')
     plot_title = os.path.basename(pkl).split('_202')[0]
@@ -206,15 +238,100 @@ def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, wri
     prediction_path = os.path.abspath(os.path.join(os.path.dirname(unseen_img), '..', '_Prediction'))
     if not os.path.exists(prediction_path):
         os.makedirs(prediction_path)
-    prediction_path = prediction_path + '\\' + os.path.basename(unseen_img).replace('composite.tif', 'prediction_') + current_time.strftime('%Y%m%d_%H%M') + '.tif'
-
+    print(unseen_img)
+    prediction_path = prediction_path + '\\' + os.path.basename(unseen_img).replace('composite_', 'prediction_')
+    
     if write_prediction:             
         write_raster(im_predicted, u_metadata, prediction_path)
         
     # intersection over union
     if perform_iou:
         compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, u_metadata)
-    return im_predicted
+    return im_predicted.size
+
+# shapes multi-band image array and returns training data ready for sklearn
+def shape_test_array(composite_arr):
+    features = []
+    
+    # for i, __ in enumerate(feature_list):
+    for i, __ in enumerate(range(0, composite_arr.shape[2], 1)):
+         ft = composite_arr[:,:,i] # take ith band
+         ft[ft == -9999.] = 0. # set '-9999.' values to 0.
+         ft = np.nan_to_num(ft) # set nan values to 0.
+         ft[(ft < lower_limit) | (ft > upper_limit)] = 0. # value precision
+         features.append(scaleData(ft)) # scale data and append to features list
+         
+    x_train = np.array(features).transpose((1,2,0)) # shape features list into array
+    x_train = [x_train[:,:,i].ravel() for i in range(x_train.shape[2])] # stack features into columns
+    return x_train    
+
+# shapes multiple composites for sklearn training input
+def shape_multiple_composites(composite_list):
+    all_features = []
+    x_metadata = []
+    x_bounds = []
+    
+    for comp in composite_list:
+        features, metadata, bounds = read_image(comp[0])
+        feature_arr = shape_test_array(features)
+    
+        all_features.append(np.array(feature_arr).transpose())
+        x_metadata.append(metadata)
+        x_bounds.append(bounds)
+        
+        print(f'Added {comp[0]} to X_train truthiness training data set. Shape: {features.shape}')
+        log_output(f'\nAdded {comp[0]} to X_train truthiness training data set.')
+
+        features = None
+        
+    x_train = np.vstack(all_features)
+    return x_train, x_metadata, x_bounds
+
+# shapes multiple labels for sklearn
+def shape_multiple_labels(label_list):
+    all_labels = []
+    y_metadata = []
+    y_bounds = []
+    
+    for label in label_list:
+        labels, metadata, bounds = read_image(label[1])
+        label_arr = labels.ravel()
+    
+        all_labels.append(np.array(label_arr).transpose())
+        y_metadata.append(metadata)
+        y_bounds.append(bounds)
+        
+        print(f'Added {label[1]} to Y_train truthiness training data set. Shape: {labels.shape}')
+        log_output(f'\nAdded {label[1]} to Y_train truthiness training data set.')
+
+        labels = None
+        
+    y_train = np.concatenate(all_labels)
+    return y_train, y_metadata, y_bounds
+
+# training accuracy
+def assess_accuracy(model, X_test, Y_test):
+    print('\nAssessing accuracy...') 
+    
+    # print('--Computing Precision, Recall, F1-Score...')
+    # classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
+    # print(f'--Classification Report:\n{classification}')
+        
+    # print('\nComputing accuracy...')
+    # acc1 = accuracy_score(Y_test, model.predict(X_test)) * 100.0
+    # print (f'--Validation Accuracy: {acc1:.2f} %') 
+    prc = precision_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--Precision: {prc:.3f}') 
+    rcll = recall_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--Recall: {rcll:.3f}') 
+    f1 = f1_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--F1-Score: {f1:.3f}') 
+    iou_score = jaccard_score(Y_test, model.predict(X_test), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
+    print(f'--IOU: {iou_score:.3f}')
+    log_output(f'\n{model.n_estimators},{model.min_samples_leaf},{model.min_samples_split},{model.max_depth}')
+    log_output(f',{prc:.3f},{rcll:.3f},{f1:.3f},{iou_score:.3f}')
+    
+    return None
 
 # pair composite image with labels
 def pair_composite_with_labels(test_rasters, test_labels):
@@ -232,44 +349,91 @@ def pair_composite_with_labels(test_rasters, test_labels):
 
 def main():
     # inputs
-    test_models = [r'P:\Thesis\Models\RF_16B_4In_100Trees_1leaf_2split_20230331_1252.pkl'
+    test_models = [#r'C:\_Thesis\Models\Hist_9B_4In_LR0.1_L20.2_20230413_1633.pkl'
+        r'C:\_Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230412_0954.pkl'
+                   
+        #r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_2split_Nonedepth_20230411_1132.pkl"
+                    # Sensitivity analysis
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_10leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_100leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_10split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_20split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_2split_5depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_2split_10depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_1leaf_2split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_100leaf_2split_10depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_100leaf_2split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_100leaf_20split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__50trees_10leaf_20split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_100leaf_2split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_10split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_20split_Nonedepth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_2split_5depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_2split_10depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_1leaf_2split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_100leaf_2split_10depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_100leaf_2split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_100leaf_20split_20depth_20230411_1132.pkl",
+                    # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_20split_20depth_20230411_1132.pkl"
                    ]
     
-    test_composites = ['P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Airport_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Harbor_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\ASamoa\\_Features_10Bands\\_Composite\\A_Samoa_Offshore_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Halfmoon\\_Features_10Bands\\_Composite\\DryTortugas_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Halfmoon\\_Features_10Bands\\_Composite\\Halfmoon_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_10Bands\\_Composite\\Moorehead4_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_10Bands\\_Composite\\Moorehead_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\NWHI\\_Features_10Bands\\_Composite\\NWHI_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Portland\\_Features_10Bands\\_Composite\\OldOrchard_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\Portland\\_Features_10Bands\\_Composite\\Portland_Extents_10Bands_composite_20230331_1139.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\WakeIsland\\_Features_10Bands\\_Composite\\WakeIsland_Extents_10Bands_composite_20230331_1139.tif']
+    test_composites = ['P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_9Bands\\_Composite\\Moorehead_Extents_9Bands_composite_20230502_0959.tif']
+    # test_composites = ['C:\\_Thesis\\Data\\Testing\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\Niihau\\_Features_9Bands\\_Composite\\Niihua4_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\PuertoReal\\_Features_9Bands\\_Composite\\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif']
     
-    test_labels = [r"P:\Thesis\Masks\Saipan_Mask_NoIsland_TF.tif",
-                   r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
-                   r"P:\Thesis\Masks\GreatLakes_Mask_NoLand_TF.tif",
-                   r"P:\Thesis\Masks\Niihua_Mask_TF.tif"
+    test_labels = [ r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif",
+                    r"C:\_Thesis\Masks\Test\Niihua_Mask_TF.tif",
+                    r"C:\_Thesis\Masks\Test\PuertoReal_Mask_TF.tif",
+                    r"C:\_Thesis\Masks\Test\Saipan_Mask_NoIsland_TF.tif"
                    ]
     
-    prediction_options = {'write_prediction': False,
+    prediction_options = {'write_prediction': True,
                           'perform_iou': False,
                           'iou_metrics': False,
                           'plot_iou': False,
                           'write_iou': False,
                          }
     
-    with_mask = False
+    # total model testing results
+    # prediction_list = pair_composite_with_labels(test_composites, test_labels)
+
+    # x_test, x_metadata, x_bounds = shape_multiple_composites(prediction_list)
+    # y_test, y_metadata, y_bounds = shape_multiple_labels(prediction_list)
     
+    # for pkl in test_models:
+    #     model = pickle.load(open(pkl, 'rb'))
+    #     print(f'--Loaded model: {model}')
+    #     assess_accuracy(model, x_test, y_test)
+    
+    with_mask = False
+      
     if with_mask:
         prediction_list = pair_composite_with_labels(test_composites, test_labels)
         
         for unseen_img in prediction_list:
             u_img, u_metadata, u_bounds = read_image(unseen_img[0])
             print(f'Read raster to predict: {unseen_img[0]}')
+            log_output(f'Read raster to predict: {os.path.basename(unseen_img[0])}')
+            log_output('\nN Trees, Leaf, Split, Depth, Precision, Recall, F1-Score, IOU')
             
             im_predicted, X_new, rc = shape_feature_array(u_img)
         
             for pkl in test_models:
                 model = pickle.load(open(pkl, 'rb'))
                 print(f'--Loaded model: {model}')
-                
-                predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
+                # log_output(f'\n{model.n_estimators},{model.min_samples_leaf},{model.min_samples_split},{model.max_depth}')
+                prediction_time = time.time()
+                img_size = predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
                 model = None
-        
-                print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+                
+                performance = round(img_size/(time.time() - prediction_time), -3)
+                # log_output(f',{performance:.0f}')
+                
+                print(f'--Prediction elapsed time: {(time.time() - prediction_time):.1f} ({img_size/(time.time() - prediction_time):,.0f} pixels per second)')
             print('------------------------------------------------------------------------\n')
+            log_output('\n-------------------------------------------------------------------\n')
     else:
         for unseen_img in test_composites:
             u_img, u_metadata, u_bounds = read_image(unseen_img)
@@ -280,11 +444,11 @@ def main():
             for pkl in test_models:
                 model = pickle.load(open(pkl, 'rb'))
                 print(f'--Loaded model: {model}')
-                
-                predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=None)
+                prediction_time = time.time()
+                img_size = predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=None)
                 model = None
         
-                print('--Prediction elapsed time: %.3f seconds ---' % (time.time() - start_time))
+                print(f'--Prediction elapsed time: {(time.time() - prediction_time):.1f} ({img_size/(time.time() - prediction_time):,.0f} pixels per second)')
             print('------------------------------------------------------------------------\n')
     return None
 

@@ -22,7 +22,7 @@ import rasterio
 from scipy.ndimage import median_filter #, gaussian_filter
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier 
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.metrics import classification_report, jaccard_score, roc_curve
+from sklearn.metrics import classification_report, jaccard_score, roc_curve, f1_score, recall_score, precision_score 
 from sklearn.model_selection import cross_val_score, learning_curve, StratifiedKFold
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
@@ -40,7 +40,6 @@ random_state = 42
 n_jobs = 5 # number of cores to use in sklearn processes
 
 current_time = datetime.datetime.now() # current time for output file names
-start_time = time.time() # start time for process timing
 log_file = r"P:\Thesis\Training\_Logs\training_" + current_time.strftime('%Y%m%d_%H%M') + '.txt' # log file
 
 #-- When information is unavailable for a cell location, the location will be assigned as NoData. 
@@ -74,13 +73,13 @@ def log_output(in_string):
 
 # plots the learning curve -- relationship between prediction accuracy and data size
 def plotLearningCurve(train_size_abs, train_mean, train_std, test_mean, test_std, curve_title):
-    plt.plot(train_size_abs, train_mean, color='blue', marker='o', markersize=5, label='Training Accuracy')
-    plt.fill_between(train_size_abs, train_mean + train_std, train_mean - train_std, alpha=0.3, color='blue')
-    plt.plot(train_size_abs, test_mean, color='green', marker='+', markersize=5, linestyle='--', label='Validation Accuracy')
-    plt.fill_between(train_size_abs, test_mean + test_std, test_mean - test_std, alpha=0.3, color='green')
+    plt.plot(train_size_abs, train_mean, color='forestgreen', marker='o', markersize=5, label='Training Accuracy')
+    plt.fill_between(train_size_abs, train_mean + train_std, train_mean - train_std, alpha=0.3, color='forestgreen')
+    plt.plot(train_size_abs, test_mean, color='royalblue', marker='+', markersize=5, linestyle='--', label='Validation Accuracy')
+    plt.fill_between(train_size_abs, test_mean + test_std, test_mean - test_std, alpha=0.3, color='royalblue')
     plt.title(curve_title)
     plt.xlabel('Training Data Size')
-    plt.ylabel('Model accuracy (f1 weighted)')
+    plt.ylabel('Model accuracy (f1-score)')
     plt.grid()
     plt.legend(loc='lower right')
     plt.show()
@@ -246,16 +245,26 @@ def assess_accuracy(model, X_train, Y_train, X_test, Y_test, RF, feature_list):
     classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
     print(f'--Classification Report:\n{classification}')
     
-    print('\nCreating confusion matrix...')
-    cm = confusion_matrix(Y_test, model.predict(X_test), labels=model.classes_)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
-    disp.plot(cmap='cividis')
-    plt.title('Confusion Matrix')
-    plt.show()
+    # print('\nCreating confusion matrix...')
+    # cm = confusion_matrix(Y_test, model.predict(X_test), labels=model.classes_)
+    # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+    # disp.plot(cmap='cividis')
+    # plt.title('Confusion Matrix')
+    # plt.show()
     
     print('\nComputing accuracy...')
     acc1 = accuracy_score(Y_test, model.predict(X_test)) * 100.0
     print (f'--Validation Accuracy: {acc1:.2f} %') 
+    prc = precision_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--Precision: {prc:.3f}') 
+    rcll = recall_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--Recall: {rcll:.3f}') 
+    f1 = f1_score(Y_test, model.predict(X_test), average='macro')
+    print (f'--F1-Score: {f1:.3f}') 
+    
+    iou_score = jaccard_score(Y_test, model.predict(X_test), average=None) # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
+    print(f'--IOU: {iou_score}')
+    log_output(f'--Precision: {prc:.3f}\n--Recall: {rcll:.3f}\n--F1-Score: {f1:.3f}\n--Mean IOU: {iou_score:.3f}')
     
     # print('\nPlotting ROC AUC...')
     # roc_auc=ROCAUC(model, classes=np.unique(Y_train))
@@ -270,7 +279,7 @@ def assess_accuracy(model, X_train, Y_train, X_test, Y_test, RF, feature_list):
         feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False).round(3)
         print(f'\nFeature Importance:\n{feature_importance}')
         log_output(f'\n--Random forest Validation Accuracy= {acc1:.2f} %'
-                   f'\nFeature Importance:\n{feature_importance}')
+                    f'\nFeature Importance:\n{feature_importance}')
         
         df = pd.DataFrame(X_train, columns=feature_list)
         correlation = df.corr()
@@ -284,7 +293,8 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
                                                         test_size=test_size, random_state=random_state)
     print('\nPrepared training data...')
     
-    chk = check_data_sizes(x_train, y_train, X_train, X_test, Y_train, Y_test)
+    # chk = check_data_sizes(x_train, y_train, X_train, X_test, Y_train, Y_test)
+    chk = True
     
     if data_stats:
         label_stats(Y_test)
@@ -293,6 +303,7 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
         for clf in model_options:
             print(f'\n\nTraining: {clf}')
             log_output(f'\n\nTraining: {clf}')
+            start_time = time.time() # start time for process timing
             model = clf.fit(X_train, Y_train)
             print(f'--Trained {clf} in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
             log_output(f'--Trained {clf} in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
@@ -303,8 +314,8 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
                 else:
                     assess_accuracy(clf, X_train, Y_train, X_test, Y_test, False, feature_list)
         
-            if write_model and 'RandomForestClassifier' in str(clf):
-                model_name = model_dir + f'\RF_{X_train.shape[1]}B_{num_inputs}In_{model.n_estimators}Trees_{model.min_samples_leaf}leaf_{model.min_samples_split}split_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
+            if write_model and 'RandomForestClassifier' in str(clf): # {X_train.shape[1]}B_{num_inputs}In
+                model_name = model_dir + f'\RF_{X_train.shape[1]}B_{model.n_estimators}trees_{model.min_samples_leaf}leaf_{model.min_samples_split}split_{model.max_depth}depth_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
                 print(f'\nSaved model: {model_name}\n')
             elif write_model and 'Hist' in str(clf):
@@ -322,6 +333,8 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
 
 # performs k-fold cross validation of training data
 def compute_kfold(model_options, x_train, y_train, n_splits, stratified):  
+    start_time = time.time() # start time for process timing
+
     for clf in model_options:
         if stratified:
             cv = StratifiedKFold(n_splits=n_splits)
@@ -332,7 +345,7 @@ def compute_kfold(model_options, x_train, y_train, n_splits, stratified):
             print(f'\nPerforming {n_splits}-fold cross validation...')
             log_output(f'\n--Performing {n_splits}-fold cross validation...')
         
-        scores = cross_val_score(clf, x_train, y_train, cv=cv, random_state=random_state) # ***** check this
+        scores = cross_val_score(clf, x_train, y_train, cv=cv, scoring='f1_macro') # ***** check this
         print(f'\n--{n_splits}-fold cross validation results:\n--{scores}')
         print("--%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
         log_output(f'\n{n_splits}-fold cross validation results:\n--{scores}'
@@ -343,7 +356,10 @@ def compute_kfold(model_options, x_train, y_train, n_splits, stratified):
 
 # computes and plots learning curve
 def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified):
+    
     for clf in model_options:
+        start_time = time.time() # start time for process timing
+
         if stratified:
             cv = StratifiedKFold(n_splits=n_splits)
             print(f'\nUsing stratified {n_splits}-fold cross validation...')
@@ -357,7 +373,7 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
         log_output(f'--Computing learning curve for {clf}. Time: {datetime.datetime.now().time()}')
         
         train_size_abs, train_scores, test_scores = learning_curve(
-        clf, x_train, y_train, cv=cv, scoring='f1_weighted', 
+        clf, x_train, y_train, cv=cv, scoring='f1_macro', 
         train_sizes=np.linspace(0.1, 1., 10), random_state=random_state)
             
         # Calculate training and test mean and std
@@ -370,7 +386,7 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
         print(f'--Plotting learning curve for {clf}. Time: {datetime.datetime.now().time()}')
         plotLearningCurve(train_size_abs, train_mean, train_std, test_mean, test_std, curve_title=clf)
         print(f'Test accuracy:\n{test_mean}')
-        print(f'Test accuracy:\n{test_std}')
+        print(f'Test standard deviation:\n{test_std}')
         log_output(f'Test accuracy:{test_mean}\nTest stdev:{test_std}')
         
         print(f'\n--Completed learning curve in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
@@ -380,55 +396,66 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
 # %% -- main
 
 def main(): 
-    feature_list = ['Blue Band',
-    'Green Band',
-    'Red Band',
-    'NIR Band',
-    'Cyan',
-    'Black',
-    'Hue',
-    'Saturation',
-    'Value',
-    'ODI 1',
-    'ODI 2',
-    'NDWI',
-    'pSDBg',
-    'pSDBr',
-    'pSDBg Standard Deviation of Slope',
-    'pSDBg Roughness'
-        ]
+    feature_list = [
+'Blue',
+'Green',
+'Red',
+'NIR',
+'ODI 1',
+'pSDBg',
+'pSDBr',
+'pSDBg Standard Deviation of Slope',
+'pSDBg Roughness'
+    ]
 
     # inputs 
-    # odi 1
-    # training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_5Bands\\_Composite\\FLKeys_Extents_DeepVessel_5Bands_composite_20230328_1248.tif', 
-    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_5Bands\\_Composite\\FLKeys_Training_5Bands_composite_20230328_1248.tif', 
-    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_5Bands\\_Composite\\Ponce_Obvious_5Bands_composite_20230328_1248.tif', 
-    #                        'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_5Bands\\_Composite\\StCroix_Extents_TF_5Bands_composite_20230328_1248.tif'
-    #                       ]
-
-    # all
-    training_composites = ['P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_16Bands\\_Composite\\FLKeys_Extents_DeepVessel_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\FL_Keys\\_Features_16Bands\\_Composite\\FLKeys_Training_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\Ponce\\_Features_16Bands\\_Composite\\Ponce_Obvious_16Bands_composite_20230331_1249.tif', 'P:\\Thesis\\Training\\_New_Feature_Building\\StCroix\\_Features_16Bands\\_Composite\\StCroix_Extents_TF_16Bands_composite_20230331_1249.tif']
+    training_composites = ['C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Training_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Obvious_9Bands_composite_20230407_1104.tif', 'C:\\_Thesis\\Data\\Training\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_TF_9Bands_composite_20230407_1104.tif']
+    # training_composites = ['C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Training\\FL_Keys\\_Features_9Bands\\_Composite\\FLKeys_Training_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Training\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Obvious_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Training\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_TF_9Bands_composite_20230412_0954.tif']
     
-    training_labels = [r"P:\Thesis\Samples\Raster\StCroix_Extents_TF_Training.tif",
-                       r"P:\Thesis\Samples\Raster\Ponce_Obvious_Training.tif",
-                       r"P:\Thesis\Samples\Raster\FLKeys_Training.tif",
-                       r"P:\Thesis\Samples\Raster\FLKeys_Extents_DeepVessel_Training.tif"
+    training_labels = [r"C:\_Thesis\Masks\Train\FLKeys_Extents_DeepVessel_Training.tif",
+                        r"C:\_Thesis\Masks\Train\FLKeys_Training.tif",
+                        r"C:\_Thesis\Masks\Train\Ponce_Obvious_Training.tif",
+                        r"C:\_Thesis\Masks\Train\StCroix_Extents_TF_Training.tif"
                       ]
     
     training_list = pair_composite_with_labels(training_composites, training_labels)
     
     # models
-    model_options = [RandomForestClassifier(n_estimators=100, 
-                                            random_state=random_state, 
-                                            n_jobs=n_jobs,
-                                            oob_score=True)
-                     # HistGradientBoostingClassifier(learning_rate=0.2, 
-                     #                                l2_regularization=0.2,
-                     #                                random_state=random_state)
+    model_options = [
+        
+        RandomForestClassifier(n_estimators=100, min_samples_leaf=10, 
+                                            random_state=random_state,n_jobs=n_jobs,oob_score=True)
+        
+        # Sensitivity analysis
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+        # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True)
                     ]
     
     # output
-    model_dir = r'P:\Thesis\Models'
+    model_dir = r'C:\_Thesis\Models'
 
     # train model(s) -- either one or multiple with various hyperparameters options
     num_inputs = len(training_list)
@@ -436,11 +463,11 @@ def main():
         x_train, x_metadata, x_bounds = shape_multiple_composites(training_list)
         y_train, y_metadata, y_bounds = shape_multiple_labels(training_list)
         
-        # compute_kfold(model_options, x_train, y_train, n_splits=5, stratified=True)
         # compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
+        compute_kfold(model_options, x_train, y_train, n_splits=10, stratified=True)
     
-        train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
-                    model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        # train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=False, 
+        #             model_accuracy=False, feature_list=feature_list, write_model=True, model_dir=model_dir)
     elif num_inputs == 1: # single training input
         x_train, x_metadata, x_bounds = shape_single_composite(training_list[0])
         y_train, y_metadata, y_bounds = shape_single_label(training_list[1])
@@ -450,10 +477,12 @@ def main():
     return None
 
 if __name__ == '__main__':
+    total_time = time.time() # start time for process timing
+
     start = current_time.strftime('%H:%M:%S')
     print(f'Starting at {start}\n')
     main()
-    runtime = time.time() - start_time
+    runtime = time.time() - total_time
     print(f'\nTotal elapsed time: {runtime:.1f} seconds / {(runtime/60):.1f} minutes')
 
         

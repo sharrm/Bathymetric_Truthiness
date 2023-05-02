@@ -21,8 +21,8 @@ import os
 
 poly_to_raster = True
 
-polygon = r"P:\Thesis\Masks\Saipan_Mask_NoIsland.shp"
-composite_raster = "P:\Thesis\Test Data\TinianSaipan\_7Band\_Composite\Saipan_Extents_NoIsland_composite.tif"
+polygon = r"P:\Thesis\Masks\Niihua_Mask.shp"
+composite_raster = r"P:\Thesis\Test Data\_New_Feature_Building\Niihau\_Features_7Bands\_Composite\Niihua4_7Bands_composite_20230405_1527.tif"
 
 # binary_raster = r"P:\Thesis\Samples\Raster" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
 binary_raster = r"P:\Thesis\Masks" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'

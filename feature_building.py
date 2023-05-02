@@ -136,7 +136,7 @@ class Features:
             print('\nCreating composite failed...')
         return out_composite_name
     
-    def feature_options(self, blue, green, red, red_edge, nir, cmyk, hsv, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
+    def feature_options(self, blue, green, red, red_edge, nir, bandratios, cmyk, hsv, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
         # list of bands
         rasters = os.listdir(self.rgbnir_dir)
 
@@ -179,6 +179,7 @@ class Features:
         red_aoi = Features.mask_to_aoi(self, surface_reflectance['red band'], surface_reflectance['red name'])
         red_edge_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge band'], surface_reflectance['red edge name'])
         nir_aoi = Features.mask_to_aoi(self, surface_reflectance['nir band'], surface_reflectance['nir name'])
+        pSDBg_aoi = Features.pSDB(self, blue_aoi, green_aoi, rol_name='pSDBg.tif')
         
         if blue:
             self.composite_features_list.append(blue_aoi)
@@ -195,6 +196,18 @@ class Features:
         if nir:
             self.composite_features_list.append(nir_aoi)
             features_list.append("'NIR',")
+        if bandratios:
+            brTF, green_blue, red_blue, red_green, nir_green, nir_red = sdb.band_ratios(red_aoi, green_aoi, blue_aoi, nir_aoi, output_dir=self.feature_dir)
+            self.composite_features_list.append(green_blue)
+            # self.composite_features_list.append(red_blue)
+            # self.composite_features_list.append(red_green)
+            # self.composite_features_list.append(nir_green)
+            # self.composite_features_list.append(nir_red)
+            features_list.append("'green_blue',")
+            # features_list.append("'red_blue',")
+            # features_list.append("'red_green',")
+            # features_list.append("'nir_green',")
+            # features_list.append("'nir_red',")
         if cmyk:
             cmykTF, cyan_aoi, magenta_aoi, yellow_aoi, black_aoi = sdb.rgb_to_cmyk(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
             self.composite_features_list.append(cyan_aoi)
@@ -207,12 +220,12 @@ class Features:
             features_list.append("'Black',")
         if hsv:
             hsvTF, hue_aoi, saturation_aoi, value_aoi = sdb.rgb_to_hsv(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
-            self.composite_features_list.append(hue_aoi)
+            # self.composite_features_list.append(hue_aoi)
             self.composite_features_list.append(saturation_aoi)
-            self.composite_features_list.append(value_aoi)
-            features_list.append("'Hue',")
+            # self.composite_features_list.append(value_aoi)
+            # features_list.append("'Hue',")
             features_list.append("'Saturation',")
-            features_list.append("'Value',")
+            # features_list.append("'Intensity',")
         if odi_1:
             odi_1 = Features.ODI_1(self, blue_aoi, green_aoi, odi1_name='odi_1.tif')
             self.composite_features_list.append(odi_1)
@@ -226,14 +239,13 @@ class Features:
             self.composite_features_list.append(ndwi_aoi)
             features_list.append("'NDWI',")
         if pSDBg:
-            pSDBg_aoi = Features.pSDB(self, blue_aoi, green_aoi, rol_name='pSDBg.tif')
             self.composite_features_list.append(pSDBg_aoi)
             features_list.append("'pSDBg',")
         if pSDBr:
             pSDBr_aoi = Features.pSDB(self, blue_aoi, red_aoi, rol_name='pSDBr.tif')
             self.composite_features_list.append(pSDBr_aoi)
             features_list.append("'pSDBr',")
-        if pSDBg_roughness and pSDBg:
+        if pSDBg_roughness:
             pSDBg_stdevslope_aoi, pSDBg_roughness_aoi = Features.pSDBg_surface_roughness(self, pSDBg_aoi, window_size)
             self.composite_features_list.append(pSDBg_stdevslope_aoi)
             self.composite_features_list.append(pSDBg_roughness_aoi)
@@ -291,8 +303,11 @@ def rgb_composite(rgb_dir):
 def main():    
     # input imagery
     # train_test = [r"P:\Thesis\Training\_New_Feature_Building"] # training
-    train_test = [#r"P:\Thesis\Test Data\_Turbid_Tests", 
-                   r"P:\Thesis\Test Data\_New_Feature_Building"] # testing
+    train_test = [r"P:\Thesis\Test Data\_Turbid_Tests"] # testing
+    # train_test = [r"P:\Thesis\Test Data\_New_Feature_Building"] # testing
+    # train_test = [r"P:\Thesis\Training\_New_Feature_Building", r"P:\Thesis\Test Data\_New_Feature_Building"]
+    # train_test = [r"C:\_Thesis\Data\Training",
+                  # r"C:\_Thesis\Data\Testing"]
     
     img_dirs = []
     for loc in train_test:
@@ -300,35 +315,37 @@ def main():
     
     # input aoi
     # extent_dir = [r"P:\Thesis\Extents\_Training"] # training    
-    extent_dir = [#r"P:\Thesis\Extents\_Turbid_Tests", 
-                   r"P:\Thesis\Extents\_Testing"] # testing
+    extent_dir = [r"P:\Thesis\Extents\_Turbid_Tests/_Mooreland"] # testing
+    # extent_dir = [r"P:\Thesis\Extents\_Testing"] # testing
+    # extent_dir = [r"P:\Thesis\Extents\_Training", r"P:\Thesis\Extents\_Testing"]
+    # extent_dir = [r"C:\_Thesis\Extents\_Training" ,
+                  # r"C:\_Thesis\Extents\_Testing"]
     
     maskSHP_dir = []
     for loc in extent_dir:
         [maskSHP_dir.append(os.path.join(loc, shp)) for shp in os.listdir(loc) if shp.endswith('.shp')]
 
-    ft_options = {'blue': False, 
-                  'green':False, 
-                  'red':  False, 
-                  'red_edge': True,
-                  'nir':  False,
+    ft_options = {'blue': True, 
+                  'green': True, 
+                  'red':  True, 
+                  'red_edge': False,
+                  'nir':  True,
+                  'bandratios': False,
                   'cmyk': False,
                   'hsv': False,
-                  'odi_1': False,
+                  'odi_1': True,
                   'odi_2': False,
                   'ndwi': False,
-                  'pSDBg': False,
-                  'pSDBr': False,
-                  'pSDBg_roughness':False,
+                  'pSDBg': True,
+                  'pSDBr': True,
+                  'pSDBg_roughness':True,
                   'window_size':7}
     
-    # num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
-    # if not ft_options['pSDBg_roughness']:
-    #     num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )
-    # elif ft_options['cmyk']:
-    #     num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 4 ) # 2 without hsv
-    
-    num_options = str(1)
+    num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
+    if not ft_options['pSDBg_roughness']:
+        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )
+    elif ft_options['cmyk']:
+        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 ) #3 w_ saturation,rougness,intensity
     
     final_composite_list = []
 
@@ -343,12 +360,13 @@ def main():
                 composite_name, features = fts.feature_options(**ft_options)
                 final_composite_list.append(composite_name)
 
-                print('--Features in composite:')
-                [print(feature) for feature in features]
+                
+                
                 print('------------------------------------------------------')
             else:
                 continue
-    
+    print('\n--Features in composite:')
+    [print(feature) for feature in features]
     print(f'\nFinal composite list: {final_composite_list}')
 
 if __name__ == '__main__':
