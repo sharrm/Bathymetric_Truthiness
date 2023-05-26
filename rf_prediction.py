@@ -207,6 +207,23 @@ def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, writ
         write_raster(differences, metadata, difference_path) # add meta 
     return None
 
+def prediction_probability(prediction_path, model, im_prob_predicted, X_new, rc, u_metadata):
+    prediction_prob = model.predict_proba(X_new)
+    prediction_prob = np.amax(prediction_prob, axis=1) # exactly what I need; feed into imshow()
+    im_prob_predicted[rc[:,0],rc[:,1]] = prediction_prob
+    
+    plt.imshow(im_prob_predicted, cmap='cividis')
+    plt.colorbar()
+    plt.show()
+    
+    prediction_path = prediction_path.replace('prediction_', 'probability_')
+    write_raster(im_prob_predicted, u_metadata, prediction_path)
+    print(prediction_path)
+
+    
+    return None
+    
+
 # use model for prediction
 def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, write_prediction, iou_metrics, plot_iou, perform_iou, write_iou, test_mask):
     print('--Predicting...')
@@ -240,6 +257,8 @@ def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, wri
         os.makedirs(prediction_path)
     print(unseen_img)
     prediction_path = prediction_path + '\\' + os.path.basename(unseen_img).replace('composite_', 'prediction_')
+    
+    prediction_probability(prediction_path, model, im_predicted, X_new, rc, u_metadata)
     
     if write_prediction:             
         write_raster(im_predicted, u_metadata, prediction_path)
@@ -380,8 +399,7 @@ def main():
                     # r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_20split_20depth_20230411_1132.pkl"
                    ]
     
-    test_composites = ['P:\\Thesis\\Test Data\\_Turbid_Tests\\Moorehead\\_Features_9Bands\\_Composite\\Moorehead_Extents_9Bands_composite_20230502_0959.tif']
-    # test_composites = ['C:\\_Thesis\\Data\\Testing\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\Niihau\\_Features_9Bands\\_Composite\\Niihua4_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\PuertoReal\\_Features_9Bands\\_Composite\\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif', 'C:\\_Thesis\\Data\\Testing\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif']
+    test_composites = [r"P:\Thesis\Test Data\_Turbid_Tests\ChesapeakeBay\_Features_9Bands\_Composite\ChesapeakeBay_proj_water_9Bands_composite_20230504_1354.tif"]
     
     test_labels = [ r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif",
                     r"C:\_Thesis\Masks\Test\Niihua_Mask_TF.tif",
