@@ -93,25 +93,34 @@ class Features:
         return pSDB_slope_name
     
     ## - roughness
-    def pSDBg_surface_roughness(self, pSDBg_name, window_size):
-        pSDBg_slope_name = Features._slope(self, pSDBg_name)
-        
-        # https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
-        window_stdevslopeTF, pSDBg_stdevslope_name = sdb.window_stdev(pSDBg_slope_name, window=window_size, 
-                                                                 stdev_name='pSDBg_stdevslope.tif', 
-                                                                 output_dir=self.feature_dir)
-        if window_stdevslopeTF:
-            print(f'--pSDBg standard deviation of slope output to {pSDBg_stdevslope_name}')
-        else:
-            print('\nCreating pSDBg stdev slope failed...')
-        
-        # GDAL Roughness
-        roughTF, pSDBg_roughness_name = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=self.feature_dir)
-        if roughTF:
-            print(f'--pSDBg roughness output to {pSDBg_roughness_name}')
-        else:
-            print('\nCreating pSDBg roughness failed...')
-        return pSDBg_stdevslope_name, pSDBg_roughness_name
+    def _surface_roughness(self, pSDBg_name, window_size, out_name):
+        if window_size > 3:
+            pSDBg_slope_name = Features._slope(self, pSDBg_name)
+            # https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
+            window_stdevslopeTF, pSDBg_stdevslope_name = sdb.window_stdev(pSDBg_slope_name, window=window_size, 
+                                                                     stdev_name=out_name, 
+                                                                     output_dir=self.feature_dir)
+            if window_stdevslopeTF:
+                print(f'--pSDBg standard deviation of slope output to {pSDBg_stdevslope_name}')
+            else:
+                print('\nCreating pSDBg stdev slope failed...')
+                
+            # GDAL Roughness
+            roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name=out_name, output_dir=self.feature_dir)
+            if roughTF:
+                print(f'--pSDBg roughness output to {pSDB_roughness_name}')
+            else:
+                print('\nCreating pSDB roughness failed...')
+                
+            return pSDBg_stdevslope_name, pSDB_roughness_name
+        elif window_size < 3:
+            # GDAL Roughness
+            roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name=out_name, output_dir=self.feature_dir)
+            if roughTF:
+                print(f'--pSDBg roughness output to {pSDB_roughness_name}')
+            else:
+                print('\nCreating pSDB roughness failed...')
+            return pSDB_roughness_name
     
     ## - predictor composite
     def build_feature_composite(self, num_bands):
@@ -136,7 +145,9 @@ class Features:
             print('\nCreating composite failed...')
         return out_composite_name
     
-    def feature_options(self, blue, green, red, red_edge, nir, bandratios, cmyk, hsv, odi_1, odi_2, ndwi, pSDBg, pSDBr, pSDBg_roughness, window_size): # options to pass in
+    def feature_options(self, blue, green, red, red_edge_704, red_edge_740, nir_783, 
+                        nir, band_comparisons, cmyk, hsv, odi_1, odi_2, ndwi, ndvi, 
+                        pSDBg, pSDBr, chl_oc3, dogliotti, nechad, pSDBg_roughness, pSDBr_roughness, window_size): # options to pass in
         # list of bands
         rasters = os.listdir(self.rgbnir_dir)
 
@@ -154,18 +165,50 @@ class Features:
                     surface_reflectance['green name'] = os.path.join(self.feature_dir, 
                                                            'masked_' + os.path.basename(band)[-7:-4] + '.tif')
                     surface_reflectance['green band'] = os.path.join(self.rgbnir_dir, band)
-                elif '665' in band or 'B4' in band: # red wavelength (665nm)
+                elif '665' in band and 'Nechad' not in band: # red wavelength (665nm)
                     surface_reflectance['red name'] = os.path.join(self.feature_dir, 
                                                          'masked_' + os.path.basename(band)[-7:-4] + '.tif')
                     surface_reflectance['red band'] = os.path.join(self.rgbnir_dir, band)
-                elif '704' in band or 'B5' in band: # red wavelength (665nm)
-                    surface_reflectance['red edge name'] = os.path.join(self.feature_dir, 
+                elif '704' in band and 'Nechad' not in band: # near infrared wavelength (704nm)
+                    surface_reflectance['red edge 704 name'] = os.path.join(self.feature_dir, 
                                                          'masked_' + os.path.basename(band)[-7:-4] + '.tif')
-                    surface_reflectance['red edge band'] = os.path.join(self.rgbnir_dir, band)
-                elif '833' in band or 'B8' in band: # red wavelength (665nm)
+                    surface_reflectance['red edge 704 band'] = os.path.join(self.rgbnir_dir, band)
+                elif '740' in band and 'Nechad' not in band or '739' in band and 'Nechad' not in band: # near infrared wavelength (740nm)
+                    surface_reflectance['red edge 740 name'] = os.path.join(self.feature_dir, 
+                                                         'masked_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['red edge 740 band'] = os.path.join(self.rgbnir_dir, band)
+                elif '783' in band or '780' in band or 'B7' in band: # near infrared wavelength (783nm)
+                    surface_reflectance['nir 783 name'] = os.path.join(self.feature_dir, 
+                                                         'masked_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['nir 783 band'] = os.path.join(self.rgbnir_dir, band)
+                elif '833' in band and 'Nechad' not in band: # near infrared wavelength (833nm)
                     surface_reflectance['nir name'] = os.path.join(self.feature_dir, 
                                                          'masked_' + os.path.basename(band)[-7:-4] + '.tif')
                     surface_reflectance['nir band'] = os.path.join(self.rgbnir_dir, band)
+                elif 'chl_oc3' in band: # chl_oc3 wavelength (acolite)
+                    surface_reflectance['chl_oc3 name'] = os.path.join(self.feature_dir, 
+                                                         'masked_' + os.path.basename(band)[-11:-4] + '.tif')
+                    surface_reflectance['chl_oc3 band'] = os.path.join(self.rgbnir_dir, band)
+                elif 'Dogliotti' in band : # dogliotti (acolite)
+                    surface_reflectance['dogliotti name'] = os.path.join(self.feature_dir, 
+                                                         'masked_dogliotti_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['dogliotti band'] = os.path.join(self.rgbnir_dir, band)
+                elif 'Nechad' in band and '665' in band: # nechad (acolite)
+                    surface_reflectance['nechad 665 name'] = os.path.join(self.feature_dir, 
+                                                         'masked_nechad_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['nechad 665 band'] = os.path.join(self.rgbnir_dir, band)
+                # elif 'Nechad' in band and '704' in band: # nechad (acolite)
+                #     surface_reflectance['nechad 704 name'] = os.path.join(self.feature_dir, 
+                #                                           'masked_nechad_' + os.path.basename(band)[-7:-4] + '.tif')
+                #     surface_reflectance['nechad 704 band'] = os.path.join(self.rgbnir_dir, band)  
+                # elif 'Nechad' in band and '740' in band or '739' in band and 'Nechad' in band: # nechad (acolite)
+                #     surface_reflectance['nechad 740 name'] = os.path.join(self.feature_dir, 
+                #                                          'masked_nechad_' + os.path.basename(band)[-7:-4] + '.tif')
+                #     surface_reflectance['nechad 740 band'] = os.path.join(self.rgbnir_dir, band)  
+                elif 'Nechad' in band and '833' in band: # nechad (acolite)
+                    surface_reflectance['nechad 833 name'] = os.path.join(self.feature_dir, 
+                                                         'masked_nechad_' + os.path.basename(band)[-7:-4] + '.tif')
+                    surface_reflectance['nechad 833 band'] = os.path.join(self.rgbnir_dir, band)                      
             except:
                 print('Expected image name ending with wavelength in nanometers (i.e., 492, 560, 665, 833) or band number (e.g., B1, B2, ...) in file name.')
 
@@ -177,10 +220,14 @@ class Features:
         blue_aoi = Features.mask_to_aoi(self, surface_reflectance['blue band'], surface_reflectance['blue name'])
         green_aoi = Features.mask_to_aoi(self, surface_reflectance['green band'], surface_reflectance['green name'])
         red_aoi = Features.mask_to_aoi(self, surface_reflectance['red band'], surface_reflectance['red name'])
-        red_edge_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge band'], surface_reflectance['red edge name'])
+        # if red_edge_704:
+        red_edge_704_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 704 band'], surface_reflectance['red edge 704 name'])
+        # if red_edge_740:
+        red_edge_740_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 740 band'], surface_reflectance['red edge 740 name'])
         nir_aoi = Features.mask_to_aoi(self, surface_reflectance['nir band'], surface_reflectance['nir name'])
-        pSDBg_aoi = Features.pSDB(self, blue_aoi, green_aoi, rol_name='pSDBg.tif')
         
+        if pSDBg:
+            pSDBg_aoi = Features.pSDB(self, blue_aoi, green_aoi, rol_name='pSDBg.tif')
         if blue:
             self.composite_features_list.append(blue_aoi)
             features_list.append("'Blue',")
@@ -190,31 +237,63 @@ class Features:
         if red:
             self.composite_features_list.append(red_aoi)
             features_list.append("'Red',")
-        if red_edge:
-            self.composite_features_list.append(red_edge_aoi)
-            features_list.append("'Red Edge',")
+        if red_edge_704:
+            self.composite_features_list.append(red_edge_704_aoi)
+            features_list.append("'RedEdge704',")
+        if red_edge_740:
+            self.composite_features_list.append(red_edge_740_aoi)
+            features_list.append("'RedEdge740',")
+        if nir_783:
+            nir_783_aoi = Features.mask_to_aoi(self, surface_reflectance['nir 783 band'], surface_reflectance['nir 783 name'])            
+            self.composite_features_list.append(nir_783_aoi)
+            features_list.append("'NIR783',")            
         if nir:
             self.composite_features_list.append(nir_aoi)
             features_list.append("'NIR',")
-        if bandratios:
-            brTF, green_blue, red_blue, red_green, nir_green, nir_red = sdb.band_ratios(red_aoi, green_aoi, blue_aoi, nir_aoi, output_dir=self.feature_dir)
-            self.composite_features_list.append(green_blue)
-            # self.composite_features_list.append(red_blue)
-            # self.composite_features_list.append(red_green)
-            # self.composite_features_list.append(nir_green)
-            # self.composite_features_list.append(nir_red)
-            features_list.append("'green_blue',")
-            # features_list.append("'red_blue',")
-            # features_list.append("'red_green',")
-            # features_list.append("'nir_green',")
-            # features_list.append("'nir_red',")
+        if chl_oc3:
+            chl_aoi = Features.mask_to_aoi(self, surface_reflectance['chl_oc3 band'], surface_reflectance['chl_oc3 name'])
+            self.composite_features_list.append(chl_aoi)
+            features_list.append("'CHL03',")
+        if dogliotti:
+            dogliotti_aoi = Features.mask_to_aoi(self, surface_reflectance['dogliotti band'], surface_reflectance['dogliotti name'])
+            self.composite_features_list.append(dogliotti_aoi)
+            features_list.append("'Dogliotti',")            
+        if nechad:
+            nechad_665aoi = Features.mask_to_aoi(self, surface_reflectance['nechad 665 band'], surface_reflectance['nechad 665 name'])
+            self.composite_features_list.append(nechad_665aoi)
+            features_list.append("'Nechad665',")  
+            
+            # nechad_704aoi = Features.mask_to_aoi(self, surface_reflectance['nechad 704 band'], surface_reflectance['nechad 704 name'])
+            # self.composite_features_list.append(nechad_704aoi)
+            # features_list.append("'Nechad704',") 
+            
+            # nechad_740aoi = Features.mask_to_aoi(self, surface_reflectance['nechad 740 band'], surface_reflectance['nechad 740 name'])
+            # self.composite_features_list.append(nechad_740aoi)
+            # features_list.append("'Nechad 740',") 
+            
+            nechad_833aoi = Features.mask_to_aoi(self, surface_reflectance['nechad 833 band'], surface_reflectance['nechad 833 name'])
+            self.composite_features_list.append(nechad_833aoi)
+            features_list.append("'Nechad833',") 
+        if band_comparisons:
+            brTF, comparison_fnames, compfeature_dict = sdb.band_comparisons(blue_aoi, 
+                                                            green_aoi, 
+                                                            red_aoi, 
+                                                            red_edge_704_aoi,
+                                                            red_edge_740_aoi,
+                                                            # nir_783_aoi,
+                                                            nir_aoi, 
+                                                            output_dir=self.feature_dir)
+            self.composite_features_list.extend(comparison_fnames)
+            formatted_items = [f"'{item}'," for item in compfeature_dict.keys()]
+            features_list.extend(formatted_items)
+            # features_list.append("'DD_pSDBr-704',")
         if cmyk:
             cmykTF, cyan_aoi, magenta_aoi, yellow_aoi, black_aoi = sdb.rgb_to_cmyk(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
-            self.composite_features_list.append(cyan_aoi)
+            # self.composite_features_list.append(cyan_aoi)
             # self.composite_features_list.append(magenta_aoi)
             # self.composite_features_list.append(yellow_aoi)
             self.composite_features_list.append(black_aoi)
-            features_list.append("'Cyan',")
+            # features_list.append("'Cyan',")
             # features_list.append("'Magenta',")
             # features_list.append("'Yellow',")
             features_list.append("'Black',")
@@ -229,7 +308,7 @@ class Features:
         if odi_1:
             odi_1 = Features.ODI_1(self, blue_aoi, green_aoi, odi1_name='odi_1.tif')
             self.composite_features_list.append(odi_1)
-            features_list.append("'ODI 1',")
+            features_list.append("'OSI',")
         if odi_2:
             odi_2 = Features.ODI_2(self, blue_aoi, green_aoi, odi2_name='odi_1.tif')
             self.composite_features_list.append(odi_2)
@@ -238,6 +317,10 @@ class Features:
             ndwi_aoi = Features.ODI_2(self, nir_aoi, green_aoi, odi2_name='ndwi.tif')
             self.composite_features_list.append(ndwi_aoi)
             features_list.append("'NDWI',")
+        if ndvi:
+            ndvi_aoi = Features.ODI_2(self, nir_aoi, red_aoi, odi2_name='ndvi.tif')
+            self.composite_features_list.append(ndvi_aoi)
+            features_list.append("'NDVI',")            
         if pSDBg:
             self.composite_features_list.append(pSDBg_aoi)
             features_list.append("'pSDBg',")
@@ -245,12 +328,20 @@ class Features:
             pSDBr_aoi = Features.pSDB(self, blue_aoi, red_aoi, rol_name='pSDBr.tif')
             self.composite_features_list.append(pSDBr_aoi)
             features_list.append("'pSDBr',")
-        if pSDBg_roughness:
-            pSDBg_stdevslope_aoi, pSDBg_roughness_aoi = Features.pSDBg_surface_roughness(self, pSDBg_aoi, window_size)
+        if pSDBg_roughness and window_size > 3:
+            pSDBg_stdevslope_aoi, pSDBg_roughness_aoi = Features._surface_roughness(self, pSDBg_aoi, window_size, out_name='pSDBg_stdevslope.tif')
             self.composite_features_list.append(pSDBg_stdevslope_aoi)
             self.composite_features_list.append(pSDBg_roughness_aoi)
-            features_list.append("'pSDBg Standard Deviation of Slope',")
-            features_list.append("'pSDBg Roughness'")
+            features_list.append("'pSDBgStandardDeviationSlope',")
+            features_list.append("'pSDBgRoughness',")
+        if pSDBg_roughness and window_size < 3:
+            pSDBg_roughness_aoi = Features._surface_roughness(self, pSDBg_aoi, window_size, out_name='pSDBg_roughness.tif')
+            self.composite_features_list.append(pSDBg_roughness_aoi)
+            features_list.append("'pSDBgRoughness',")
+        if pSDBr_roughness:
+            pSDBr_roughness_aoi = Features._surface_roughness(self, pSDBr_aoi, window_size, out_name='pSDBr_roughness.tif')
+            self.composite_features_list.append(pSDBr_roughness_aoi)
+            features_list.append("'pSDBrRoughness',")
         
         num_bands = len(features_list)
         
@@ -289,11 +380,11 @@ def rgb_composite(rgb_dir):
         except:
             print('May be issue with input file name. Expected ".tif" and "rhos_(wavelength)" in name.')
             
-    rgb_compTF, rgb_composite_name, band_number = sdb.composite(rgb, os.path.join(rgb_dir + '\_RGB', 
+    rgb_compTF, rgb_composite_name = sdb.composite(rgb, os.path.join(rgb_dir + '\_RGB', 
                                                                                   os.path.basename(rgb_dir) + '_rgb_composite.tif'))
     
     if rgb_compTF:
-        print(f'--Wrote: {rgb_composite_name} with {band_number} bands.')
+        print(f'--Wrote: {rgb_composite_name} with three bands.')
     else:
         print('\nCreating RGB composite failed...')
     return None
@@ -302,54 +393,61 @@ def rgb_composite(rgb_dir):
 # %% - main
 def main():    
     # input imagery
-    # train_test = [r"P:\Thesis\Training\_New_Feature_Building"] # training
-    train_test = [r"P:\Thesis\Test Data\_Turbid_Tests"] # testing
-    # train_test = [r"P:\Thesis\Test Data\_New_Feature_Building"] # testing
-    # train_test = [r"P:\Thesis\Training\_New_Feature_Building", r"P:\Thesis\Test Data\_New_Feature_Building"]
-    # train_test = [r"C:\_Thesis\Data\Training",
-                  # r"C:\_Thesis\Data\Testing"]
-    
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTraining_rhos']
+    train_test = [r'C:\_Turbidity\Imagery\_turbidTesting_rhos'] 
+    # train_test = [r'P:\_RSD\Data\Imagery\_turbidTestingChesapeake'] 
+    # train_test = [r'P:\Thesis\Training\_Turbid_Training']
+    # train_test = [r'P:\Thesis\Test Data\_Turbid_Tests\_RSD']
+        
     img_dirs = []
     for loc in train_test:
         [img_dirs.append(os.path.join(loc, folder)) for folder in os.listdir(loc)]
     
     # input aoi
-    # extent_dir = [r"P:\Thesis\Extents\_Training"] # training    
-    extent_dir = [r"P:\Thesis\Extents\_Turbid_Tests/_Mooreland"] # testing
-    # extent_dir = [r"P:\Thesis\Extents\_Testing"] # testing
-    # extent_dir = [r"P:\Thesis\Extents\_Training", r"P:\Thesis\Extents\_Testing"]
-    # extent_dir = [r"C:\_Thesis\Extents\_Training" ,
-                  # r"C:\_Thesis\Extents\_Testing"]
-    
+    # extent_dir = [r'C:\_Turbidity\Extents\_turbidTrainingExMC']
+    extent_dir = [r"C:\_Turbidity\Extents\_turbidTestingEx"]
+    # extent_dir = [r"P:\_RSD\Data\Extents\_turbidTestingExChesapeake"]
+    # extent_dir = [r'P:\Thesis\Extents\_Turbid_Training']
+    # extent_dir = [r'P:\Thesis\Extents\_Testing']
+   
+
     maskSHP_dir = []
     for loc in extent_dir:
         [maskSHP_dir.append(os.path.join(loc, shp)) for shp in os.listdir(loc) if shp.endswith('.shp')]
 
     ft_options = {'blue': True, 
-                  'green': True, 
+                  'green': True,  
                   'red':  True, 
-                  'red_edge': False,
-                  'nir':  True,
-                  'bandratios': False,
+                  'red_edge_704': False,
+                  'red_edge_740': False,
+                  'nir_783': False, 
+                  'nir': True,
+                  'band_comparisons': True,
                   'cmyk': False,
                   'hsv': False,
-                  'odi_1': True,
+                  'odi_1': True, 
                   'odi_2': False,
                   'ndwi': False,
+                  'ndvi': False,
                   'pSDBg': True,
                   'pSDBr': True,
-                  'pSDBg_roughness':True,
+                  'chl_oc3': False,
+                  'dogliotti': False,
+                  'nechad': False,
+                  'pSDBg_roughness': True,
+                  'pSDBr_roughness': False,
                   'window_size':7}
     
-    num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )# exclude window size and include two for roughness
+    num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 ) # exclude window size and include two for roughness
     if not ft_options['pSDBg_roughness']:
-        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 )
+        num_options = str(sum(ft_options.values()) - (ft_options['window_size']))
     elif ft_options['cmyk']:
         num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 ) #3 w_ saturation,rougness,intensity
     
     final_composite_list = []
 
     for rgbnir_dir in img_dirs:
+        # rgb_composite(rgbnir_dir)
         for maskSHP in maskSHP_dir:
             if sdb.check_bounds(rgbnir_dir, maskSHP):
                 print('Creating features based on:')
@@ -359,15 +457,14 @@ def main():
                 fts = Features(rgbnir_dir, maskSHP, num_options)
                 composite_name, features = fts.feature_options(**ft_options)
                 final_composite_list.append(composite_name)
-
-                
                 
                 print('------------------------------------------------------')
             else:
-                continue
+                print('Did not find any matching geotiff and shapefiles boundaries...')
     print('\n--Features in composite:')
     [print(feature) for feature in features]
     print(f'\nFinal composite list: {final_composite_list}')
+
 
 if __name__ == '__main__':
     start = current_time.strftime('%H:%M:%S')

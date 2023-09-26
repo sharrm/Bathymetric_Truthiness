@@ -52,7 +52,7 @@ lower_limit = np.finfo(np.float32).min/10
 
 # plots correlation matrix for feature inputs
 def correlation_matrix(correlation, df):
-    print(correlation)
+    # print(correlation)
     plt.matshow(correlation, cmap='cividis') # viridis cividis
     plt.xticks(range(df.select_dtypes(['number']).shape[1]), df.select_dtypes(['number']).columns, fontsize=10, rotation=-60)
     plt.yticks(range(df.select_dtypes(['number']).shape[1]), df.select_dtypes(['number']).columns, fontsize=10, rotation=30)
@@ -228,10 +228,12 @@ def label_stats(y_):
     true_positives = np.count_nonzero(y_ == 2)
     true_negatives = np.count_nonzero(y_ == 1)
     no_data_value = np.count_nonzero(y_ == 0)
+    turbid = np.count_nonzero(y_ == 3)
 
     print('\nTraining label breakdown:')
     print(f'--Percent True: {true_positives / y_.size:1f} ({true_positives:,} True Values)')
     print(f'--Percent False: {true_negatives / y_.size:1f} ({true_negatives:,} False Values)')
+    print(f'--Percent Turbid: {turbid / y_.size:1f} ({turbid:,} Turbid Values)')
     print(f'--Percent No Data: {no_data_value / y_.size:1f} ({no_data_value:,} No Data Values)')
     
     log_output(f'--Percent True: {true_positives / y_.size:1f} ({true_positives:,} True Values)')
@@ -289,7 +291,7 @@ def assess_accuracy(model, X_train, Y_train, X_test, Y_test, RF, feature_list):
     return None
 
 # trains model
-def train_model(model_options, test_size, x_train, y_train, num_inputs, data_stats, 
+def train_model(model_options, test_size, x_train, y_train, num_inputs, data_stats, exclude_zeros,
                 model_accuracy, feature_list, write_model, model_dir):
     X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, 
                                                         test_size=test_size, random_state=random_state)
@@ -298,8 +300,16 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
     # chk = check_data_sizes(x_train, y_train, X_train, X_test, Y_train, Y_test)
     chk = True
     
+    if exclude_zeros:
+        X_train = np.delete(X_train, np.where(Y_train == 0), axis = 0)
+        Y_train = np.delete(Y_train, np.where(Y_train == 0), axis=0)
+        X_test = np.delete(X_test, np.where(Y_test == 0), axis = 0)
+        Y_test = np.delete(Y_test, np.where(Y_test == 0), axis=0)
+    
     if data_stats:
         label_stats(Y_test)
+        
+    model_names = []
     
     if chk:
         for clf in model_options:
@@ -319,20 +329,24 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
             if write_model and 'RandomForestClassifier' in str(clf): # {X_train.shape[1]}B_{num_inputs}In
                 model_name = model_dir + f'\RF_{X_train.shape[1]}B_{model.n_estimators}trees_{model.min_samples_leaf}leaf_{model.min_samples_split}split_{model.max_depth}depth_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
-                print(f'\nSaved model: {model_name}\n')
+                # print(f'\nSaved model: {model_name}\n')
+                model_names.append(model_name)
             elif write_model and 'Hist' in str(clf):
                 model_name = model_dir + f'\Hist_{X_train.shape[1]}B_{num_inputs}In_LR{model.learning_rate}_L2{model.l2_regularization}_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb'))
-                print(f'\nSaved model: {model_name}\n')
+                # print(f'\nSaved model: {model_name}\n')
+                model_names.append(model_name)
             elif write_model and 'XGB' in str(clf):
                 model_name = model_dir + f'\XGB_{X_train.shape[1]}B_{num_inputs}In_NumEst{model.n_estimators}_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb'))
-                print(f'\nSaved model: {model_name}\n')
+                # print(f'\nSaved model: {model_name}\n')
+                model_names.append(model_name)
             elif write_model and 'MLP' in str(clf):
                 model_name = model_dir + f'\MLP_{X_train.shape[1]}B_{num_inputs}In_{model.hidden_layer_sizes}Layers_' + current_time.strftime('%Y%m%d_%H%M') + '.pkl'
                 pickle.dump(model, open(model_name, 'wb'))
-                print(f'\nSaved model: {model_name}\n')
-        return model
+                # print(f'\nSaved model: {model_name}\n')
+                model_names.append(model_name)
+        return model_names
     else:
         print('Issue with data sizes')
         return None
@@ -407,98 +421,48 @@ def main():
 'Green',
 'Red',
 'NIR',
+'red_740_green',
 'OSI',
 'pSDBg',
 'pSDBr',
 'pSDBgStandardDeviationSlope',
-'pSDBgRoughness',        
-
+'pSDBgRoughness',
+        
     ]
 
     # inputs 
     training_composites = [
                             # turbid training
-                            # chesapeake, hatteras, lookout
-                            # 492, 560, 665, 704, 740, 833, psdbg, psdbr, osi, chl, dogliotti
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Barnegat\\_Features_9Bands\\_Composite\\BarnegatBay_Training_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20230919_1625.tif'
-                    
-                            # r'P:\\_RSD\\Data\\Imagery\\PR_Turbid_Test\\_Features_15Bands\\_Composite\\Puerto_Real_Smaller_18Bands_composite_20230818_1208.tif'
-                                                                
-                            # r"P:\Thesis\Training\_Turbid_Training\Maine\_Features_9Bands\_Composite\Maine_Training_Revised_9Bands_composite_20230807_1240.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\Barnegat\_Features_9Bands\_Composite\BarnegatBay_Training_9Bands_composite_20230804_1336.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\StCroix\_Features_9Bands\_Composite\StCroix_Extents_Revised_9Bands_composite_20230807_1240.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\Ponce\_Features_9Bands\_Composite\Ponce_Wakes_Small_9Bands_composite_20230807_1449.tif"
-                           ]
+# 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Barnegat\\_Features_11Bands\\_Composite\\Barnegat_20221228Ex3C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Chesapeake_20230316\\_Features_11Bands\\_Composite\\Chesapeake_20230316Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Hatteras_20230102\\_Features_11Bands\\_Composite\\Hatteras_20230102Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Keys_20230115\\_Features_11Bands\\_Composite\\FL_Keys_20230115Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Lookout_20230306\\_Features_11Bands\\_Composite\\Lookout_20230306Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Maine\\_Features_11Bands\\_Composite\\Maine_20221006Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Ponce\\_Features_11Bands\\_Composite\\Ponce_20221203Ex4C_10Bands_composite_20230915_1044.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\St.Croix\\_Features_11Bands\\_Composite\\StCroix_20220129Ex3C_10Bands_composite_20230915_1044.tif'
+'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Barnegat\\_Features_10Bands\\_Composite\\Barnegat_20221228Ex3C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Chesapeake_20230316\\_Features_10Bands\\_Composite\\Chesapeake_20230316Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Hatteras_20230102\\_Features_10Bands\\_Composite\\Hatteras_20230102Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Keys_20230115\\_Features_10Bands\\_Composite\\FL_Keys_20230115Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Lookout_20230306\\_Features_10Bands\\_Composite\\Lookout_20230306Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Maine\\_Features_10Bands\\_Composite\\Maine_20221006Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Ponce\\_Features_10Bands\\_Composite\\Ponce_20221203Ex4C_10Bands_composite_20230922_1107.tif', 'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\St.Croix\\_Features_10Bands\\_Composite\\StCroix_20220129Ex3C_10Bands_composite_20230922_1107.tif'
+]
     
     training_labels = [
                         # turbid training
-                        # chesapeake, hatteras, lookout
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Chesapeake_20230316Ex4C_TF.tif',
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Hatteras_20230102Ex4C_TF.tif'
-                        
-                        # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                        # r"P:\_RSD\Data\Masks\_turbidTrainingMasks\Chesapeake_Ex20230316_TF.tif",
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Hatteras_Ex20230102_TF.tif',
-                        # r"P:\_RSD\Data\Masks\_turbidTrainingMasks\Lookout_Ex20230306_TF.tif"
-        
-                        r"P:\Thesis\Masks\BarnegatBay_Training_TF.tif",
-                        r"P:\Thesis\Masks\Maine_Training_Revised_TF.tif",
-                        r"P:\Thesis\Masks\StCroix_Extents_Revised_TF.tif",
-                        r"P:\Thesis\Masks\Ponce_Wakes_Small_TF.tif",
-                       # r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
-                       # r'P:\Thesis\Masks\PuertoReal_TurbidMask_TF.tif'
-                       # r"P:\Thesis\Masks\FLKeys_Training.tif"
+                        r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Chesapeake_20230316Ex4C_TF.tif',
+                        r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Hatteras_20230102Ex4C_TF.tif',
+                        r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Lookout_20230306Ex4C_TF.tif',
+                        r"C:\_Turbidity\Masks\_turbidTrainingMasks\Barnegat_20221228Ex3C_TF.tif",
+                        r"C:\_Turbidity\Masks\_turbidTrainingMasks\FL_Keys_20230115Ex4C_TF.tif",
+                        r"C:\_Turbidity\Masks\_turbidTrainingMasks\Ponce_20221203Ex4C_TF.tif",
+                        r'C:\_Turbidity\Masks\_turbidTrainingMasks\Maine_20221006Ex4C_TF.tif',
+                        r"C:\_Turbidity\Masks\_turbidTrainingMasks\StCroix_20220129Ex3C_TF.tif"
                       ]
     
     training_list = pair_composite_with_labels(training_composites, training_labels)
     
     # models
     model_options = [
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),                  
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),                   
-                    
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True)
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=200, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True)
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    
-                    # HistGradientBoostingClassifier(learning_rate=0.2, l2_regularization=0.2, random_state=random_state, max_iter=100)
-                    
-                    # MLPClassifier(hidden_layer_sizes=100, random_state=random_state)
+                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    # RandomForestClassifier(n_estimators=50, random_state=random_state,n_jobs=n_jobs,oob_score=True),
+
+                    RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+
+                    # HistGradientBoostingClassifier(random_state=random_state),
+                    # HistGradientBoostingClassifier(learning_rate=0.2, l2_regularization=0.2, random_state=random_state, max_iter=500),
+                    # MLPClassifier(hidden_layer_sizes=50, random_state=random_state),
+                    # MLPClassifier(hidden_layer_sizes=100, random_state=random_state),
+                    # MLPClassifier(hidden_layer_sizes=200, random_state=random_state),
                     
                     # XGBClassifier(base_score=0.5, colsample_bylevel=1, colsample_bytree=1,
                     #                gamma=0, learning_rate=0.1, max_delta_step=0, max_depth=10,
@@ -514,8 +478,7 @@ def main():
 
     
     # output
-    # model_dir = r"P:\_RSD\Models"
-    model_dir = r'P:\Thesis\Models'
+    model_dir = r"C:\_Turbidity\Models"
 
     # train model(s) -- either one or multiple with various hyperparameters options
     num_inputs = len(training_list)
@@ -523,17 +486,19 @@ def main():
         x_train, x_metadata, x_bounds = shape_multiple_composites(training_list)
         y_train, y_metadata, y_bounds = shape_multiple_labels(training_list)
         
-        compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
-        compute_kfold(model_options, x_train, y_train, n_splits=10, stratified=True)
+        # compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
+        # compute_kfold(model_options, x_train, y_train, n_splits=10, stratified=True)
     
-        # train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
-        #             model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        model_names = train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, exclude_zeros=True,
+                    model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        print(f'\nModels trained: {model_names}')
     elif num_inputs == 1: # single training input
         x_train, x_metadata, x_bounds = shape_single_composite(training_list[0][0])
         y_train, y_metadata, y_bounds = shape_single_label(training_list[0][1])
 
-        train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=False, 
+        model_names = train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=False, exclude_zeros=True,
                     model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        print(f'Models trained: {model_names}')
     return None
 
 if __name__ == '__main__':

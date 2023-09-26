@@ -81,35 +81,51 @@ def mask_imagery(band, in_shp, masked_raster_name):
     dest = None
     return True, masked_raster_name
 
-def band_ratios(red_name, green_name, blue_name, nir_name, output_dir):
+def band_comparisons(blue_name, green_name, red_name, red_704_name, red_740_name, nir_name, output_dir):
+                     # nir_783_name, 
     out_meta = rasterio.open(blue_name).meta
     blue_band = rasterio.open(blue_name).read(1)
     green_band = rasterio.open(green_name).read(1)
     red_band = rasterio.open(red_name).read(1)
-    nir_band = rasterio.open(nir_name).read(1)
+    red_704_band = rasterio.open(red_704_name).read(1)
+    red_740_band = rasterio.open(red_740_name).read(1)
+    # nir_783_band = rasterio.open(nir_783_name).read(1)
+    # nir_band = rasterio.open(nir_name).read(1)
     
-    green_blue = green_band / blue_band
-    red_blue = red_band / blue_band
-    red_green = red_band / green_band
-    nir_green = nir_band / green_band
-    nir_red = nir_band / red_band
+    # psdbr = np.log(blue_band * 1000.0) / np.log(red_band * 1000.0)
+    # nd_red_vs_nir = ((red_band + red_704_band + red_740_band) - (nir_783_band + nir_band)) / (red_band + red_704_band + red_740_band + nir_783_band + nir_band)
+    # nd_740_704 = (red_740_band - red_704_band) #/ (red_740_band + red_704_band)
+    # nd_704_blue = (red_704_band - blue_band) / (red_704_band + blue_band)
+    # nd_pSDBr_704 = (psdbr - red_704_band) #/ (psdbr + red_704_band)
+    # dd_560_704 = green_band - red_704_band
+    # b3_b4 = green_band + red_band
+    # b2_b4 = blue_band + red_band
+    # add_740_704 = red_704_band + red_740_band
+    # DDWI = Green - NIR https://www.mdpi.com/2072-4292/14/3/557
+    red_740_green = red_740_band / green_band
     
-    ratios = [green_blue, red_blue, red_green, nir_green, nir_red]
+    comparison_dict = {
+        # 'nd_red_vs_nir': nd_red_vs_nir,
+        # 'dd_740_704': nd_740_704, 
+        # 'nd_704_blue': nd_704_blue, 
+        # 'dd_560_704': dd_560_704,
+        # 'dd_pSDBr_704': nd_pSDBr_704, # changed from normalized difference
+        # 'b3_plus_b4': b3_b4,
+        # 'b2_plus_b4': b2_b4,
+        # 'add_740_704': add_740_704
+        'red_740_green': red_740_green
+        }
     
-    gb_out = os.path.join(output_dir, 'green_blue.tif')
-    rb_out = os.path.join(output_dir, 'red_blue.tif')
-    rg_out = os.path.join(output_dir, 'red_green.tif')
-    ng_out = os.path.join(output_dir, 'nir_green.tif')
-    nr_out = os.path.join(output_dir, 'nir_red.tif')
+    comparison_names = []
     
-    ratio_names = [gb_out, rb_out, rg_out, ng_out, nr_out]
-    
-    for ratio_arr, outraster_name in zip(ratios, ratio_names):
+    for _arr in comparison_dict.keys():
+        outraster_name = os.path.join(output_dir, _arr + '.tif')
+        comparison_names.append(outraster_name)
         
         with rasterio.open(outraster_name, "w", **out_meta) as dest:
-            dest.write(ratio_arr,1)
+            dest.write(comparison_dict[_arr],1)
     
-    return True, *ratio_names
+    return True, comparison_names, comparison_dict
 
 def rgb_to_cmyk(red_name, green_name, blue_name, output_dir):
     out_meta = rasterio.open(blue_name).meta

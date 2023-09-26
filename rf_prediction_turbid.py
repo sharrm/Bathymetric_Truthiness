@@ -46,13 +46,14 @@ upper_limit = np.finfo(np.float32).max/10
 lower_limit = np.finfo(np.float32).min/10
 
 # labels for output plots
-tf_labels = {0: 'No Data', 1: 'False', 2: 'True'}
+tf_labels = {0: 'No Data', 1: 'False', 2: 'True', 3: 'Turbid'}
 iou_labels = {0: 'No Data', 2: 'True Negative', 3: 'False Negative', 4: 'True Positive', 5: 'False Positive'}
 
 # colormap for true or false bathymetry plot legends
-tf_cmap = {0:[225/255, 245/255, 255/255, 1],
+tf_cmap = {0:[0/255, 0/255, 0/255, 1],
            1:[225/255, 175/255, 0/255, 1],
-           2:[75/255, 130/255, 0/255, 1]}
+           2:[75/255, 130/255, 0/255, 1],
+           3:[150/255, 125/255, 105/255, 1]}
 
 # colormap for iou similarity plot legends
 iou_cmap = {0:[0/255, 0/255, 0/255, 1],
@@ -70,6 +71,7 @@ def tf_colorMap(data):
     rgba[data==0, :] = [0/255, 0/255, 0/255, 1] # unclassified 
     rgba[data==1, :] = [225/255, 175/255, 0/255, 1]
     rgba[data==2, :] = [75/255, 130/255, 0/255, 1]
+    rgba[data==3, :] = [150/255, 125/255, 105/255, 1]
     return rgba
 
 # colormap for iou similarity plots
@@ -369,136 +371,26 @@ def pair_composite_with_labels(test_rasters, test_labels):
 
 def main():
     # inputs
-    test_models = [#r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_2split_Nonedepth_20230411_1132.pkl"
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1538.pkl', # without turbid FLKeys water
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1518.pkl' # turbid FLKeys water
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1453.pkl' # updated ponce
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1415.pkl' # without barnegat
-                   # r'P:\Thesis\Models\RF_9B_100trees_20leaf_2split_Nonedepth_20230807_1341.pkl' # 20 leaf
-                   # r'P:\Thesis\Models\RF_9B_100trees_1leaf_2split_Nonedepth_20230807_1328.pkl' # no leaf
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1309.pkl' # 10 leaf, lacking vessels
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230804_1338.pkl'
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230804_1429.pkl'
-                   
-                   # turbid models
-                   # r'P:\Thesis\Models\RF_5B_100trees_1leaf_2split_Nonedepth_20230818_1358.pkl',
-                   # r'P:\Thesis\Models\Hist_5B_2In_LR0.2_L20.2_20230818_1358.pkl'
-                   # r'P:\Thesis\Models\RF_7B_200trees_1leaf_2split_Nonedepth_20230821_1458.pkl'
-                   # r'P:\Thesis\Models\RF_8B_200trees_1leaf_2split_Nonedepth_20230824_1557.pkl' # chl_oc3
-                   
-                   # including cb
-                   # r'C:\_Thesis\Models\_4LocationSensitivity\RF_11B_100trees_10leaf_2split_Nonedepth_20230814_1446.pkl',
-                   # r'C:\_Thesis\Models\_4LocationSensitivity\RF_11B_100trees_1leaf_10split_Nonedepth_20230814_1446.pkl'
-                   
-                   # Sensitivity with FL Keys 
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_10split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_10leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_20split_20depth_20230810_1531.pkl",
-                    
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_10split_Nonedepth_20230810_1510.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_10leaf_2split_Nonedepth_20230810_1510.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_20split_20depth_20230810_1531.pkl",
-                    
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_10split_Nonedepth_20230810_1453.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_10leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_20split_20depth_20230810_1531.pkl"
-                    
-                    # boosting
-                    # r'P:\Thesis\Models\XGB_9B_4In_NumEst100_20230815_1519.pkl'
-                    
-                    # turbid tests: chesapeake bay, hatteras inlet, cape lookout
-                    # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                    # r'P:\Thesis\Models\RF_13B_100trees_1leaf_2split_Nonedepth_20230825_1217.pkl',
-                    # r'P:\Thesis\Models\Hist_13B_2In_LR0.2_L20.2_20230825_1217.pkl'
-                    
-                    # 492, 560, 665, 704, 740, 833, psdbg, psdbr, osi, chl, dogliotti
-                    # r'P:\Thesis\Models\RF_11B_100trees_1leaf_2split_Nonedepth_20230825_1626.pkl'
-                    r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230919_1628.pkl'
-                   ]
+    test_models = [           
+                    # turbid tests: 
+                        # 10 areas -- worked pretty well -- continue testing
+'C:\\_Turbidity\\Models\\RF_10B_100trees_10leaf_2split_Nonedepth_20230925_0913.pkl'
+                       
+                        ]
     
     test_composites = [
                         # turbid tests: chesapeake bay, hatteras inlet, cape lookout
                         # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                        # 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230410\\_Features_9Bands\\_Composite\\ChesapeakeBay_vCompositeTest_9Bands_composite_20230920_1344.tif'
-'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf_9Bands_composite_20230920_1459.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf2_9Bands_composite_20230920_1459.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf3_9Bands_composite_20230920_1459.tif'
-        
-                        # r'P:\\_RSD\\Data\\Imagery\\_Testing\\FLKeys\\_Features_9Bands\\_Composite\\FLKeys_Training_8Bands_composite_20230824_1603.tif'
-                        # 'P:\\_RSD\\Data\\Imagery\\FLKeys\\_Features_3Bands\\_Composite\\FLKeys_Training_5Bands_composite_20230818_1355.tif'
-                        # r'P:\Thesis\Test Data\_Turbid_Tests\_RSD\Chesapeake_20230410\_Features_8Bands\_Composite\ChesapeakeBay_vCompositeTest_7Bands_composite_20230821_1424.tif'
-        
-                        # cape lookout composite tests
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\CapeLookout_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\CapeLookout_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230815_1459.tif"
-        
-                        # chesapeake composite tests
-                        # r"C:\_Thesis\Data\ChesapeakeComposite\_Test\GreenTest\_Features_9Bands\_Composite\ChesapeakeBay_vCompositeTest_9Bands_composite_20230814_1244.tif",
-                        # r"C:\_Thesis\Data\ChesapeakeComposite\_Test\RedTest\Imagery\_Features_9Bands\_Composite\ChesapeakeBay_vCompositeTest_9Bands_composite_20230815_1259.tif",
-                        
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\CapeLookout\\_Features_9Bands\\_Composite\\CapeLookout_9Bands_composite_20230810_0923.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Hatteras_Inlet\\_Features_9Bands\\_Composite\\Hatteras_Inlet_9Bands_composite_20230810_0916.tif',
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\Moorehead\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230502_0959.tif",
-                        # r'P:\\Thesis\\Test Data\\_New_Feature_Building\\KeyWest_Bahia\\Imagery\\_Features_9Bands\\_Composite\\KeyWest_Bahia_Extents_9Bands_composite_20230807_0959.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Hatteras\\_Features_9Bands\\_Composite\\Hatteras_Extents_9Bands_composite_20230804_1404.tif',
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\ChesapeakeBay\_Features_9Bands\_Composite\ChesapeakeBay_proj_water_9Bands_composite_20230504_1354.tif",
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Chesapeake2\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230808_1258.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230410\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230811_1311.tif', 
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230510\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230811_1311.tif'
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\Moorehead\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230502_0959.tif",
-                        # r"C:\_Thesis\Data\Testing\GreatLakes\_Features_9Bands\_Composite\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\Niihau\_Features_9Bands\_Composite\Niihua4_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\PuertoReal\_Features_9Bands\_Composite\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\Saipan\_Features_9Bands\_Composite\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif"
-                        # r"P:\Thesis\Training\_New_Feature_Building\FL_Keys\_Features_9Bands\_Composite\FLKeys_Training_9Bands_composite_20230412_0954.tif"
-                       ]
+'C:\\_Turbidity\\Imagery\\_turbidTesting_rhos\\Hatteras_20230127\\_Features_10Bands\\_Composite\\Hatteras_Inlet_10Bands_composite_20230922_1142.tif', 'C:\\_Turbidity\\Imagery\\_turbidTesting_rhos\\Hatteras_20230206\\_Features_10Bands\\_Composite\\Hatteras_Inlet_10Bands_composite_20230922_1142.tif', 'C:\\_Turbidity\\Imagery\\_turbidTesting_rhos\\Hatteras_20230507\\_Features_10Bands\\_Composite\\Hatteras_Inlet_10Bands_composite_20230922_1142.tif', 'C:\\_Turbidity\\Imagery\\_turbidTesting_rhos\\Lookout_20230507\\_Features_10Bands\\_Composite\\CapeLookout_10Bands_composite_20230922_1142.tif', 'C:\\_Turbidity\\Imagery\\_turbidTesting_rhos\\Lookout_20230726\\_Features_10Bands\\_Composite\\CapeLookout_10Bands_composite_20230922_1142.tif'
+
+]
     
-    # test_composites = [r"C:\_Thesis\Data\Testing\GreatLakes\_Features_9Bands\_Composite\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\Niihau\_Features_9Bands\_Composite\Niihua4_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\PuertoReal\_Features_9Bands\_Composite\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\Saipan\_Features_9Bands\_Composite\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif"]
-    
-    # test_labels = [ r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\Niihua_Mask_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\PuertoReal_Mask_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\Saipan_Mask_NoIsland_TF.tif"
-    #                ]
-    
-    prediction_options = {'write_prediction': True,
+    prediction_options = {'write_prediction': False,
                           'perform_iou': False,
                           'iou_metrics': False,
                           'plot_iou': False,
                           'write_iou': False,
-                          'prob_plot': True
+                          'prob_plot': True,
                           }
     
     # total model testing results
