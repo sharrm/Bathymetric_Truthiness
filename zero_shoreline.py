@@ -1,503 +1,394 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Sep 15 12:19:30 2023
+September 2023
+@author: matthew.sharr
 
-@author: sharrm
-
-
+Zero Shoreline:
+Objective is to identify nearshore pixels, adjacent to land, that can be used
+to determine the m0 (y-intercept) for band ratio SDB.
 """
 
 import fiona
-import geopandas as gpd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import os
 import pandas as pd
 import pickle
 import rasterio
-from rasterio.mask import mask
-from skimage.morphology import binary_dilation, binary_erosion
-from sklearn import svm
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier 
-from sklearn.metrics import accuracy_score#, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.metrics import classification_report, f1_score, recall_score, precision_score 
-from sklearn.model_selection import train_test_split, learning_curve, StratifiedKFold
-from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import rasterio.mask
+from scipy import spatial
+from scipy import ndimage
+from skimage import feature, filters
+# from sklearn import svm
+from sklearn.ensemble import RandomForestClassifier #, HistGradientBoostingClassifier, AdaBoostClassifier, GradientBoostingClassifier
+from sklearn.metrics import classification_report, jaccard_score
+from sklearn.model_selection import train_test_split
+# from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.tree import plot_tree
+import warnings
 
 
-# %% - morphology
+# %% - globals and functions
 
-def near_land(input_blue, input_green, input_red, input_704, input_nir, shapefile, out_dir, write):
-    
-    # Open the geotiff file
-    with rasterio.open(input_green) as green:
-        # Read the green band metadata
-        out_meta = green.meta
-        
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_green, transform = mask(green, gdf.geometry, crop=True)
-    
-    # Open the geotiff file
-    with rasterio.open(input_nir) as nir:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_nir, transform = mask(nir, gdf.geometry, crop=True)
-        
-    # Open the geotiff file
-    with rasterio.open(input_704) as b704:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_704, transform = mask(b704, gdf.geometry, crop=True)        
-        
-    # Open the geotiff file
-    with rasterio.open(input_blue) as blue:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_blue, transform = mask(blue, gdf.geometry, crop=True)
-            
-    # Open the geotiff file
-    with rasterio.open(input_red) as red:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_red, transform = mask(red, gdf.geometry, crop=True)            
-    
-    # compute ndwi
-    ndwi = (cropped_green - cropped_nir) / (cropped_green + cropped_nir)
-    cropped = np.moveaxis(ndwi, 0, -1)[:,:,0]
-    
-    # compute pSDBr
-    pSDBr = np.log(cropped_blue * 1000) / np.log(cropped_red * 1000)
-    pSDBg = np.log(cropped_blue * 1000) / np.log(cropped_green * 1000)  
-    
-    # create binary array for land and water pixels
-    nan_vals = np.where(np.isnan(cropped))
-    cropped_land_water = np.where(cropped < 0.15, 1, 0)
-    
-    # morphological operation to grow land pixels
-    morphed_land = binary_dilation(cropped_land_water) #.astype(cropped_land_water.dtype))
-    erode_land = binary_erosion(morphed_land) #.astype(cropped_land_water.dtype))
-    
-    # pixels adjacent to land
-    zero_mask = np.logical_and(morphed_land, ~erode_land)
-    land_adjacent_ndwi = np.where(zero_mask, cropped, 0)    
-    # land_adjacent_ndwi = np.where(land_adjacent_ndwi < 0.15, 0, land_adjacent_ndwi)
-    # land_adjacent_percentile = np.where(np.percentile(land_adjacent_ndwi, 90), land_adjacent_ndwi, 0)
-    percentile10 = np.nanpercentile(cropped[zero_mask == 1], 10)
-    print(f'Precentile 10: {percentile10}')
-    percentile10 = np.where(land_adjacent_ndwi < percentile10, land_adjacent_ndwi, 0)
-    
-    percentile90 = np.nanpercentile(cropped[zero_mask == 1], 90)
-    print(f'Precentile 90: {percentile90}')
-    percentile90 = np.where(land_adjacent_ndwi > percentile90, land_adjacent_ndwi, 0)
-    
-    # ndwi values for pixels adjacent to land for histogram
-    ndwi_adjacent = cropped[zero_mask == 1]
-    print(f'Average land adjacent NDWI value: {np.nanmean(ndwi_adjacent):.3f} ± {np.nanstd(ndwi_adjacent):.3f}')
-    print(f'Median land adjacent NDWI value: {np.nanmedian(ndwi_adjacent):.3f}')
-    land_adjacent_ndwi[nan_vals] = np.nan
-    percentile10[nan_vals] = np.nan
-    percentile90[nan_vals] = np.nan
-    
-    
-    def normalize(band):
-        band_min, band_max = (np.nanmin(band), np.nanmax(band))
-        return ((band-band_min)/((band_max - band_min)))
+warnings.filterwarnings('ignore')
 
+# return subsampled training data and corresponding labels
+def subsample(array1, array2, adjustment):   
+    # get indices of rows containing 0 and 1
+    indices_with_zeros = np.where(array1 == 0)[0]
+    indices_with_ones = np.where(array1 == 1)[0]
+    
+    # randomly select a subset of rows containing 0
+    num_rows_to_select = np.count_nonzero(array1 == 1) * adjustment # Adjust as needed
+    rng = np.random.default_rng(0)
+    selected_indices_zeros = rng.choice(indices_with_zeros, size=num_rows_to_select, replace=False)
+    
+    # include the randomly selected rows
+    selected_labels = np.concatenate((array1[indices_with_ones], array1[selected_indices_zeros]))
+    selected_training = np.vstack((array2[indices_with_ones], array2[selected_indices_zeros]))
+    
+    return selected_labels, selected_training
+
+# normalize rgb imagery for plotting
+def normalize(band):
+    band_min, band_max = (np.nanmin(band), np.nanmax(band))
+    return ((band-band_min)/((band_max - band_min)))
+
+# plot the rgb image and nearshore pixels overlaid on ndwi
+def plot_rgb_poi(cropped_red, cropped_green, cropped_blue, prediction, ndwi, out_transform, w, h, brightness, aspect):
+    # normalize rgb image
     red_n = normalize(cropped_red[0,:,:])
     green_n = normalize(cropped_green[0,:,:])
     blue_n = normalize(cropped_blue[0,:,:])
     
+    # brighten rgb image
     rgb_composite_n = np.dstack((red_n, green_n, blue_n))
+    # brightened_image = np.clip(rgb_composite_n * brightness, 0, 255)
+    brightened_image = rgb_composite_n * 255.0 * brightness
+    brightened_image = np.where(np.isnan(brightened_image), 255, brightened_image.astype(np.uint8))
     
-    # Stack the bands to create an RGB image
-    rgb_image = np.dstack((cropped_red[0,:,:], cropped_green[0,:,:], cropped_blue[0,:,:]))
-    brightened_image = np.clip(rgb_composite_n * 3, 0, 255)#.astype(np.uint8)
-    brightened_image[nan_vals] = 255
-    m = np.ma.masked_where(np.isnan(brightened_image),brightened_image)
+    # set extent for plotting
+    x_min, y_max = out_transform * (0, 0)  
+    x_max, y_min = out_transform * (w, h)  
+    extent = [x_min, x_max, y_min, y_max]
+    
+    f, ax = plt.subplots(1,2, figsize=(12, 6), dpi=200)
+    
+    ax[0].imshow(brightened_image, extent=extent)
+    ax[0].set_title('RGB Composite', fontsize=10)
+    ax[0].set_xlim(x_min, x_max)
+    ax[0].set_ylim(y_min, y_max)
+    ax[0].set_xlabel('UTM Easting (m)')
+    ax[0].set_ylabel('UTM Northing (m)')
+    ax[0].set_aspect(aspect)  # adjust the value as needed
+    # ax[0].grid(True)
+    
+    ax[1].imshow(ndwi, cmap='Greys', extent=extent)
+    ax[1].imshow(prediction, vmax=0.2, cmap='Reds', alpha=0.5, extent=extent)
+    custom_legend = [Line2D([0], [0], color='maroon', lw=2, label='Prediction')]
+    ax[1].legend(handles=custom_legend, loc='lower right')
+    ax[1].set_title('Predicted Nearshore Pixels Overlaid on NDWI', fontsize=10)
+    ax[1].set_xlim(x_min, x_max)
+    ax[1].set_ylim(y_min, y_max)
+    ax[1].set_xlabel('UTM Easting (m)')
+    ax[1].set_ylabel('UTM Northing (m)')
+    ax[1].set_aspect(aspect)  # adjust the value as needed
+    # ax[1].grid(True)
 
-    
-    # plt.figure(figsize=(10, 10))
-    f, ax = plt.subplots(2,2, figsize=(10, 6), dpi=200)
-    ax[0,0].imshow(brightened_image)
-    ax[0,0].set_title('RGB', fontsize=10)
-    ax[0,1].imshow(land_adjacent_ndwi, vmax=0.1, cmap='cividis')
-    ax[0,1].set_title('Land Adjacent Pixels', fontsize=10)
-    ax[1,0].imshow(percentile10, vmax=0.01, cmap='cividis')
-    ax[1,0].set_title('10th Percentile', fontsize=10)
-    ax[1,1].imshow(percentile90, vmax=0.05, cmap='cividis')
-    ax[1,1].set_title('90th Percentile', fontsize=10)
-    # plt.tight_layout()
-    plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
-    plt.show()
-    
-    # ndwi values for pixels adjacent to land for histogram
-    ndwi_adjacent = cropped[zero_mask == 1]
-    print(f'Average land adjacent NDWI value: {np.nanmean(ndwi_adjacent):.3f} ± {np.nanstd(ndwi_adjacent):.3f}')
-    print(f'Median land adjacent NDWI value: {np.nanmedian(ndwi_adjacent):.3f}')
-    land_adjacent_ndwi[nan_vals] = np.nan
-        
-    training_data = np.vstack((cropped_blue.flatten(), 
-                               cropped_green.flatten(), 
-                               cropped_red.flatten(),
-                                cropped_704.flatten(),
-                               cropped_nir.flatten(), 
-                               ndwi.flatten(), 
-                               # pSDBg.flatten(),
-                               pSDBr.flatten())).transpose()
-    training_data[np.isnan(training_data)] = 2
-    
-    # Plot the masked image
-    plt.figure(figsize=(12, 6))
-    plt.subplot(2, 2, 1)
-    plt.imshow(cropped, cmap='gray', vmin=0.2)
-    plt.title('Land Adjacent Pixels')
-    plt.imshow(zero_mask, cmap='Reds', alpha=0.3, vmax=0.2)
-    plt.colorbar()
-    
-    # Plot histogram of values
-    plt.subplot(2, 2, 2)
-    plt.hist(ndwi_adjacent, bins=50, edgecolor='k')
-    plt.xlabel('NDWI Value')
-    plt.ylabel('Frequency')
-    plt.title('Distribution of NDWI Values at Land Adjacent Pixels')
     plt.tight_layout()
     plt.show()
     
-    land_adjacent_ndwi[nan_vals] = 2
-    
-    # raster meta
-    out_meta.update({"driver": "GTiff",
-                      "height": cropped_nir.shape[1],
-                      "width": cropped_nir.shape[2],
-                      "count": cropped_nir.shape[0],
-                      "nodata": 2,
-                      "transform": transform})
-    
-    # save rasters    
-    if write:
-        morph_name = os.path.join(out_dir, 'morphed.tif')
-        with rasterio.open(morph_name, "w", **out_meta) as dest:
-            dest.write(morphed_land, 1)
-        
-        dest = None
-        
-        ndwi_name = os.path.join(out_dir, 'ndwi.tif')
-        with rasterio.open(ndwi_name, "w", **out_meta) as dest:
-            dest.write(cropped, 1)
-        
-        dest = None
-        
-        print(f'Wrote: {ndwi_name}')
-        
-        water_name = os.path.join(out_dir, 'land_adjacent.tif')
-        with rasterio.open(water_name, "w", **out_meta) as dest:
-            dest.write(land_adjacent_ndwi, 1)
-        
-        dest = None
-        
-        percentile10_name = os.path.join(out_dir, 'percentile10.tif')
-        with rasterio.open(percentile10_name, "w", **out_meta) as dest:
-            dest.write(percentile10, 1)
-        
-        dest = None
-        
-        print(f'Wrote: {percentile10_name}')
-        
-        percentile90_name = os.path.join(out_dir, 'percentile90.tif')
-        with rasterio.open(percentile90_name, "w", **out_meta) as dest:
-            dest.write(percentile90, 1)
-        
-        dest = None
-        
-        print(f'Wrote: {percentile90_name}')
-    
-    return land_adjacent_ndwi, training_data
+    return None
 
-
-# %% - training
-
-# plots the learning curve -- relationship between prediction accuracy and data size
-def plotLearningCurve(train_size_abs, train_mean, train_std, test_mean, test_std, curve_title):
-    plt.plot(train_size_abs, train_mean, color='forestgreen', marker='o', markersize=5, label='Training Accuracy')
-    plt.fill_between(train_size_abs, train_mean + train_std, train_mean - train_std, alpha=0.3, color='forestgreen')
-    plt.plot(train_size_abs, test_mean, color='royalblue', marker='+', markersize=5, linestyle='--', label='Validation Accuracy')
-    plt.fill_between(train_size_abs, test_mean + test_std, test_mean - test_std, alpha=0.3, color='royalblue')
-    plt.title(curve_title)
-    plt.xlabel('Training Data Size')
-    plt.ylabel('Model accuracy (f1-score)')
-    plt.grid()
-    plt.legend(loc='lower right')
+# can give you a sense of decision tree
+def plot_decision_tree():
+    plt.figure(figsize=(12, 8))
+    plot_tree(model.estimators_[0], feature_names=feature_list, class_names=['0','1'], filled=True, rounded=True)
     plt.show()
-    
-    return None
 
-# computes and plots learning curve
-def compute_learning_curve(clf, x_train, y_train):
 
-    # start_time = time.time() # start time for process timing
-    cv = StratifiedKFold(n_splits=5)
-    print(f'\nComputing learning curve for {clf}.')
-    
-    train_size_abs, train_scores, test_scores = learning_curve(
-    clf, x_train, y_train, cv=cv, scoring='f1_macro', 
-    train_sizes=np.linspace(0.1, 1., 10), random_state=42)
+# %% - Training
+
+# shapes the feature inputs into a 2d array where each column is a 1d version of the 2d array/raster image
+# returns the training data (x-inputs) and training labels (y-inputs) for fitting the model
+# the 'points of interest' (poi) are simply nearshore points from the edge detection and ndwi filtering
+def training_data_prep(in492, in560, in665, in833, land):
+    with fiona.open(land, "r") as shapefile:
+        shapes = [feature["geometry"] for feature in shapefile]
+
+    with rasterio.open(in492) as blue:
+        blue_img, out_transform = rasterio.mask.mask(blue, shapes, crop=True)
+        out_meta = blue.meta
+
+    with rasterio.open(in560) as green:
+        green_img, out_transform = rasterio.mask.mask(green, shapes, crop=True)
+        out_meta = green.meta
         
-    # Calculate training and test mean and std
-    train_mean = np.mean(train_scores, axis=1)
-    train_std = np.std(train_scores, axis=1)
-    test_mean = np.mean(test_scores, axis=1)
-    test_std = np.std(test_scores, axis=1)
-    
-    # Plot the learning curve
-    print(f'--Plotting learning curve for {clf}.')
-    plotLearningCurve(train_size_abs, train_mean, train_std, test_mean, test_std, curve_title=clf)
-    print(f'Test accuracy:\n{test_mean}')
-    print(f'Test standard deviation:\n{test_std}')
+    with rasterio.open(in665) as red:
+        red_img, out_transform = rasterio.mask.mask(red, shapes, crop=True)
+        out_meta = red.meta
         
-    return None
+    with rasterio.open(in833) as nir:
+        nir_img, out_transform = rasterio.mask.mask(nir, shapes, crop=True)
+        out_meta = nir.meta
+        w = nir.width
+        h = nir.height
+        
+    # compute ndwi and pSDBr
+    ndwi = (green_img - nir_img) / (green_img + nir_img)
+    pSDBr = np.log(blue_img * 1000) / np.log(red_img * 1000)
 
-def subsample(y, X, X_small_classes, y_small_classes):
-    # Identify the class with the largest number of samples
-    unique_classes, class_counts = np.unique(y, return_counts=True)
-    largest_class = unique_classes[np.argmax(class_counts)]
-    
-    # Create a mask to identify samples belonging to the largest class
-    largest_class_mask = (y == largest_class)
-    
-    # Create a subset of the largest class by randomly sampling a portion of it
-    subset_size = int(0.8 * np.sum(largest_class_mask))  # Adjust the portion as needed
-    subset_indices = np.random.choice(np.where(largest_class_mask)[0], size=subset_size, replace=False)
-    X_largest_class_subset = X[subset_indices]
-    y_largest_class_subset = y[subset_indices]
-    
-    # Combine the subset of the largest class with the smaller classes for training
-    X_train = np.vstack((X_largest_class_subset, X_small_classes))
-    y_train = np.concatenate((y_largest_class_subset, y_small_classes))
+    # perform edge detection on ndwi, and mask out areas (targeting land)
+    canny_feat = feature.canny(ndwi[0,:,:], sigma=3)
+    poi = np.where((canny_feat == 1) & (ndwi[0,:,:] > 0.1), 1, 0 )
 
-def train_model(water_vals, training_data):
-    labels = np.where((water_vals != 0) & (water_vals != 2), 1, water_vals)
+    # shape feature array
+    training_arr = np.vstack((ndwi.flatten(),
+                            pSDBr.flatten(),
+                            nir_img.flatten(),
+                            red_img.flatten(), 
+                            green_img.flatten(), 
+                            blue_img.flatten()
+                            )).transpose()
     
-    water_vals_1d = training_data
-    labels_1d = labels.flatten()
+    return np.nan_to_num(training_arr), poi.flatten()
+
+# trains classifier
+def model_training(in492, in560, in665, in833, land, save_model, out_model):
+    # uses training_data_prep function above to shape the feature inputs
+    # for training labels, 1s are nearshore pixels, and 0s are everything else
+    training_arr, poi_labels = training_data_prep(in492, in560, in665, in833, land)
     
-    print(f'\nTraining else values: {np.count_nonzero(labels_1d == 0)}')
-    print(f'Water labels: {np.count_nonzero(labels_1d == 1)}')
-    print(f'Nan labels: {np.count_nonzero(labels_1d == 2)}')
+    # because the data is so imbalanced (far fewer nearshore pixels than not), 'randomly' subsample the data
+    # using 20 times the amount of non-nearshore pixels
+    # using the same 'random' pixels every time for repeatability
+    training_labels, training_selection = subsample(poi_labels, training_arr, 20)
     
-    # water_vals_1d = np.delete(water_vals_1d, np.where(training_data == 2), axis = 0)
-    # labels_1d = np.delete(labels_1d, np.where(training_data == 2), axis=0)
+    # scale data between 0 and 1, per column
+    scaler = MinMaxScaler().fit(training_selection)
+    scaled_water = scaler.transform(training_arr)
+    x_train, x_test, y_train, y_test = train_test_split(training_selection, training_labels, test_size=0.33, random_state=42, stratify=training_labels)
+    scaled_X_train = scaler.transform(x_train)
+    scaled_X_test = scaler.transform(x_test)
     
-    # subsample()
+    # classifier options
+    clf = RandomForestClassifier(n_jobs=4, n_estimators=20, random_state=42) # 20 trees seemed to work well for me and is fast
+    # clf = AdaBoostClassifier(random_state=42, learning_rate=1., base_estimator=RandomForestClassifier(n_jobs=4, n_estimators=20, random_state=42)) # can boost another classifier
+    # clf = MLPClassifier(random_state=42, max_iter=300, hidden_layer_sizes=(10,10,10,10,10)) # hidden layers worked well for me
+    # clf = HistGradientBoostingClassifier(random_state=42, max_iter=500, learning_rate=0.2, l2_regularization=0.2) # seems to overpredict
+    # clf = GradientBoostingClassifier(n_estimators=50, random_state=42) # comperable to Hist above
+    # clf = svm.SVC(random_state=42, kernel='rbf', gamma='auto') # underpredicts and is much slower -- probably not useful operationally
     
-    print(f'\nTrainData Shape: {water_vals_1d.shape}\nLabels Shape: {labels_1d.shape}')    
+    # fit/train classifier/model
+    print(f'Training: {clf}\n')
+    model = clf.fit(scaled_X_train, y_train)
     
-    X_train, X_test, Y_train, Y_test = train_test_split(water_vals_1d, labels_1d, 
-                                                        test_size=0.3, random_state=40, stratify=labels_1d)
+    # training metrics
+    print(classification_report(y_test, model.predict(scaled_X_test)))
+    print(f'Jaccard (IOU) Score: {jaccard_score(y_test, model.predict(scaled_X_test), average="macro"):.3f}')
     
-    scaler = MinMaxScaler().fit(water_vals_1d)
-    # scaler = StandardScaler().fit(water_vals_1d)
-    X_train_scaled = scaler.transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    print(f'\nX Train Shape: {X_train_scaled.shape}\nY_train Shape: {Y_train.shape}')
-    print(f'Water labels: {np.count_nonzero(Y_train == 1)}\n')
-    
-    clf = RandomForestClassifier(random_state=42, n_jobs=4, n_estimators=40)
-    # clf = HistGradientBoostingClassifier(random_state=42, max_iter=500, learning_rate=0.1, max_depth=5)
-    # clf = MLPClassifier(random_state=42, max_iter=300, hidden_layer_sizes=(30,30,30))
-    # clf = svm.SVC(C=1.0, class_weight='balanced', random_state=42)
-    
-    # X_learn_scaled = scaler.transform(water_vals_1d)
-    # compute_learning_curve(clf, X_learn_scaled, labels_1d)
-    
-    print(f'Training {clf}')
-    model = clf.fit(X_train_scaled, Y_train)
-    
-    feature_list = ['blue', 'green', 'red', '704', 'nir', 'ndwi', 'pSDBr']
-    
+    # this is to get a sense of feature importance from random forest.
+    # ****comment out code if using a model other than random forest
+    feature_list = ['ndwi', 'pSDBr', 'nir', 'red', 'green', 'blue']
     feature_importance = pd.Series(model.feature_importances_,index=feature_list).sort_values(ascending=False).round(3)
-    print(f'\nFeature Importance:\n{feature_importance}\n')
+    print(f'\nFeature Importance:\n{feature_importance}')
     
-    print('--Computing Precision, Recall, F1-Score...')
-    classification = classification_report(Y_test, model.predict(X_test_scaled), labels=model.classes_)
-    print(f'--Classification Report:\n{classification}')
-    
-    return water_vals_1d, labels_1d, model
-
-def save_model(model_dir, model_name, model):
-    model_name = os.path.join(model_dir, model_name)
-    pickle.dump(model, open(model_name, 'wb')) # save the trained Random Forest model
-    
-    print(f'Saved model: {model_name}')
-    
-    return None
-
-# %% - prediction
-
-def predict(test_blue, test_green, test_red, test_704, test_nir, shapefile, model):
-    # Open the geotiff file
-    with rasterio.open(test_green) as green:
-        # Read the green band metadata
-        prediction_meta = green.meta
-        
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_green, transform = mask(green, gdf.geometry, crop=True)
-    
-    # Open the geotiff file
-    with rasterio.open(test_nir) as nir:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_nir, transform = mask(nir, gdf.geometry, crop=True)
-        
-    # Open the geotiff file
-    with rasterio.open(test_704) as b704:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_704, transform = mask(b704, gdf.geometry, crop=True)          
-        
-    # Open the geotiff file
-    with rasterio.open(test_blue) as blue:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
-        
-        # Crop the raster to the shapefile extent
-        cropped_blue, transform = mask(blue, gdf.geometry, crop=True)
+    # save trained model
+    if save_model:
+        with open(out_model, 'wb') as f:
+            pickle.dump(model, f)
             
-    # Open the geotiff file
-    with rasterio.open(test_red) as red:            
-        # Open the shapefile
-        gdf = gpd.read_file(shapefile)
+        print(f'\nSaved model to {out_model}')
         
-        # Crop the raster to the shapefile extent
-        cropped_red, out_transform = mask(red, gdf.geometry, crop=True)           
-    
-    # compute ndwi
-    ndwi = (cropped_green - cropped_nir) / (cropped_green + cropped_nir)
-    
-    # compute pSDBr
-    pSDBr = np.log(cropped_blue * 1000) / np.log(cropped_red * 1000)  
-    pSDBg = np.log(cropped_blue * 1000) / np.log(cropped_green * 1000)  
-    
-    # shape prediction data
-    test_data = np.vstack((cropped_blue.flatten(), 
-                               cropped_green.flatten(), 
-                               cropped_red.flatten(),
-                               cropped_704.flatten(),
-                               cropped_nir.flatten(), 
-                               ndwi.flatten(), 
-                               # pSDBg.flatten(),
-                               pSDBr.flatten())).transpose()
-    
-    scaler = MinMaxScaler().fit(test_data)
-    # scaler = StandardScaler().fit(test_data)
-    scaled = scaler.transform(test_data)
-    scaled[np.isnan(scaled)] = 2
-        
-    prediction = model.predict(scaled)
-    prediction_shape = cropped_red.shape
-    
-    print(f'\nPrediction (0) values: {np.count_nonzero(prediction == 0)}')
-    print(f'Prediction (1) values: {np.count_nonzero(prediction == 1)}')
-    
-    return prediction_shape, prediction, prediction_meta, pSDBr, out_transform
+    return model
 
-def plot_prediction(prediction, prediction_shape, pSDBr):
-    # reshape
-    img = np.reshape(prediction, prediction_shape)
-    img = np.moveaxis(img, 0, -1)[:,:,0]
+
+# %% - Predicting
+
+# predicts nearshore pixels and plot/print results
+# can write prediction to raster
+def prediction(in492, in560, in665, in833, land, model, out_prediction, write_prediction):
+    # could have reused the same training function but kept everything here for plotting purposes
+    with fiona.open(land, "r") as shapefile:
+        shapes = [feature["geometry"] for feature in shapefile]
+
+    with rasterio.open(in492) as blue:
+        blue_img, out_transform = rasterio.mask.mask(blue, shapes, crop=True)
+        out_meta = blue.meta
+
+    with rasterio.open(in560) as green:
+        green_img, out_transform = rasterio.mask.mask(green, shapes, crop=True)
+        out_meta = green.meta
+        
+    with rasterio.open(in665) as red:
+        red_img, out_transform = rasterio.mask.mask(red, shapes, crop=True)
+        out_meta = red.meta
+        
+    with rasterio.open(in833) as nir:
+        nir_img, out_transform = rasterio.mask.mask(nir, shapes, crop=True)
+        out_meta = nir.meta
+        w = nir.width
+        h = nir.height
+        
+    # compute ndwi and pSDBr
+    ndwi = (green_img - nir_img) / (green_img + nir_img)
+    pSDBr = np.log(blue_img * 1000) / np.log(red_img * 1000)
+
+    # perform edge detection on ndwi, and mask out areas (targeting land)
+    canny_feat = feature.canny(ndwi[0,:,:], sigma=3)
+    poi = np.where((canny_feat == 1) & (ndwi[0,:,:] > 0.1), 1, 0 )
+
+    # shape feature array
+    test_arr = np.vstack((ndwi.flatten(),
+                            pSDBr.flatten(),
+                            nir_img.flatten(),
+                            red_img.flatten(), 
+                            green_img.flatten(), 
+                            blue_img.flatten()
+                            )).transpose()
     
-    # pSDBr = np.moveaxis(pSDBr, 0, -1)[:,:,0]
-    # mask = np.ma.masked_where(img != 1, img)
-    img = np.where(img == 2, np.nan, img)
+    test_arr = np.nan_to_num(test_arr)
+    # scale data between 0 and 1
+    test_scaler = MinMaxScaler().fit(test_arr)
+    test_scaled = test_scaler.transform(test_arr)
     
-    fig = plt.figure()
-    # plt.imshow(pSDBr, cmap='gray')
-    # plt.imshow(mask, cmap='hot', alpha=0.7)
-    plt.imshow(img, cmap='viridis')
-    plt.title('Prediction')
-    plt.colorbar()
+    print('\nPredicting...')
+    prediction = model.predict(test_scaled).reshape((ndwi[0,:,:].shape))
+    
+    # print median results
+    print('\nPlotting results...')
+    nearshore_pixels = pSDBr[0,:,:][prediction == 1]
+    median_prediction = np.median(nearshore_pixels)
+    # median_ndwi = np.median(ndwi[0,:,:][prediction == 1])
+    print(f'\nMedian (pSDBr): {median_prediction:.3f}')
+    # print(f'Median (ndwi): {median_ndwi:.3f}')
+    print(f'Count: {nearshore_pixels.size:,}')
+    
+    # plot rgb and results
+    plot_rgb_poi(red_img, green_img, blue_img, prediction, ndwi[0,:,:], out_transform, w, h, brightness=3, aspect=1.)
+    
+    # plot histogram
+    plt.hist(pSDBr[0,:,:][prediction == 1], bins=50)
+    plt.title('Distribution of pSDBr in Predicted Nearshore Area')
+    plt.xlabel('pSDBr Value')
+    plt.ylabel('Count')
     plt.show()
     
-    return img.shape
-
-def save_prediction(prediction, pSDBr, prediction_shape, prediction_meta, out_dir, out_transform):
-        
-    prediction_name = os.path.join(out_dir, '_prediction.tif')
-    pSDBr_name = os.path.join(out_dir, '_pSDBr.tif')
-    img = np.reshape(prediction, prediction_shape)
-    # img = np.ma.masked_where(img == 1, img)
+    out_image = prediction
+    out_meta.update({"driver": "GTiff",
+                      "height": out_image.shape[0],
+                      "width": out_image.shape[1],
+                      "transform": out_transform})
     
-    # raster meta
-    prediction_meta.update({"driver": "GTiff", 
-                            "height": prediction_shape[1],
-                            "width": prediction_shape[2],
-                            "count": prediction_shape[0],
-                            "nodata": 2, 
-                            "transform": out_transform})
-    
-    # save rasters    
-    with rasterio.open(prediction_name, "w", **prediction_meta) as dest:
-        dest.write(img) # had to specify '1' here for some reason
-        dest = None
+    if write_prediction:
+        with rasterio.open(out_prediction, 'w', **out_meta) as dst:
+            dst.write(out_image, 1)   
+            
+        dst = None
         
-    print(f'\nSaved prediction to: {prediction_name}')
-    
-    # save rasters    
-    with rasterio.open(pSDBr_name, "w", **prediction_meta) as dest:
-        dest.write(pSDBr) # had to specify '1' here for some reason
-        dest = None
-        
-    print(f'Saved pSDBr to: {pSDBr_name}')
-
     return None
 
 
 # %% - main
 
 if __name__ == '__main__':
-    input_blue = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_492.tif"
-    input_green = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\NDWI\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_560.tif"
-    input_red = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_665.tif"    
-    input_nir = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\NDWI\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_833.tif"
-    input_704 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_704.tif"
-    # shapefile = r"C:\_ZeroShoreline\Extent\Hatteras_Inlet.shp"
-    shapefile = r"C:\_ZeroShoreline\Extent\Hatteras_Inlet_FocusedExtent.shp"
     
-    out_dir = r"C:\_ZeroShoreline\Out\Hatteras_20230127"
-    model_dir = r'C:\_ZeroShoreline\Model'
-    model_name = 'RF_BGR7NWpR.pkl'
+    # input training data
+    # in492 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\StCroix_Zero.shp"
     
-    # input_blue = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_492.tif"
-    # input_green = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_559.tif"
-    # input_red = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_665.tif"
-    # input__704 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_704.tif"
-    # input_nir = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_833.tif"
+    # train
+    # out_model = os.path.join(r'C:\_ZeroShoreline\Model', 'RF_20trees_TrainedStCroix.pkl')
+    # model = model_training(in492, in560, in665, in833, land, save_model=True, out_model=out_model)
     
+    # test data
+    # in492 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\NDWI\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_704.tif"    
+    # in833 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230102\NDWI\S2A_MSI_2023_01_02_15_53_20_T18SVE_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Hatteras_Inlet_FocusedExtent.shp"
+    # land = r"C:\_ZeroShoreline\Extent\Hatteras_Inlet.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_559.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\Hatteras_20230127\S2B_MSI_2023_01_27_15_53_19_T18SVE_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Hatteras_Inlet_FocusedExtent.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\StCroix_20220129\S2A_MSI_2022_01_29_14_58_03_T20QKE_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\StCroix_Zero.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\HalfMoonShoal_20221209\S2A_MSI_2022_12_09_16_16_30_T17RLH_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\HalfMoonShoal_20221209\S2A_MSI_2022_12_09_16_16_30_T17RLH_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\HalfMoonShoal_20221209\S2A_MSI_2022_12_09_16_16_30_T17RLH_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\HalfMoonShoal_20221209\S2A_MSI_2022_12_09_16_16_30_T17RLH_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\HalfMoonShoal_20221209\S2A_MSI_2022_12_09_16_16_30_T17RLH_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Halfmoon_Zero.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20230115\S2A_MSI_2023_01_15_16_06_24_T17RNH_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20230115\S2A_MSI_2023_01_15_16_06_24_T17RNH_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20230115\S2A_MSI_2023_01_15_16_06_24_T17RNH_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20230115\S2A_MSI_2023_01_15_16_06_24_T17RNH_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20230115\S2A_MSI_2023_01_15_16_06_24_T17RNH_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\FL_Zero2.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20211201\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20211201\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20211201\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_665.tif"
+    # # in704 = r
+    # in833 = r"C:\_ZeroShoreline\Imagery\FL_Keys_20211201\S2A_MSI_2021_12_01_16_05_11_T17RNH_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\FL_Zero2.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\Saipan_20221203\S2A_MSI_2022_12_03_00_52_56_T55PCS_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Saipan_20221203\S2A_MSI_2022_12_03_00_52_56_T55PCS_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Saipan_20221203\S2A_MSI_2022_12_03_00_52_56_T55PCS_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Saipan_20221203\S2A_MSI_2022_12_03_00_52_56_T55PCS_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\Saipan_20221203\S2A_MSI_2022_12_03_00_52_56_T55PCS_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Saipan_Zero.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\Ponce_20221203\S2B_MSI_2022_12_03_15_08_01_T19QGV_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Ponce_20221203\S2B_MSI_2022_12_03_15_08_01_T19QGV_L2R_rhos_559.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Ponce_20221203\S2B_MSI_2022_12_03_15_08_01_T19QGV_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Ponce_20221203\S2B_MSI_2022_12_03_15_08_01_T19QGV_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\Ponce_20221203\S2B_MSI_2022_12_03_15_08_01_T19QGV_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Ponce_Zero.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\Lookout_20230306\S2A_MSI_2023_03_06_16_03_31_T18SUD_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Lookout_20230306\S2A_MSI_2023_03_06_16_03_31_T18SUD_L2R_rhos_560.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Lookout_20230306\S2A_MSI_2023_03_06_16_03_31_T18SUD_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Lookout_20230306\S2A_MSI_2023_03_06_16_03_31_T18SUD_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\Lookout_20230306\S2A_MSI_2023_03_06_16_03_31_T18SUD_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\CapeLookout.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\WakeIsland_20221223\S2B_MSI_2022_12_23_23_31_09_T58QFG_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\WakeIsland_20221223\S2B_MSI_2022_12_23_23_31_09_T58QFG_L2R_rhos_559.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\WakeIsland_20221223\S2B_MSI_2022_12_23_23_31_09_T58QFG_L2R_rhos_665.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\WakeIsland_20221223\S2B_MSI_2022_12_23_23_31_09_T58QFG_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\WakeIsland_Zero.shp"
+
+    # in492 = r"C:\_ZeroShoreline\Imagery\Nihau\S2B_MSI_2022_01_28_21_19_22_T04QCK_L2R_rhos_492.tif"
+    # in560 = r"C:\_ZeroShoreline\Imagery\Nihau\S2B_MSI_2022_01_28_21_19_22_T04QCK_L2R_rhos_559.tif"
+    # in665 = r"C:\_ZeroShoreline\Imagery\Nihau\S2B_MSI_2022_01_28_21_19_22_T04QCK_L2R_rhos_665.tif"
+    # in704 = r"C:\_ZeroShoreline\Imagery\Nihau\S2B_MSI_2022_01_28_21_19_22_T04QCK_L2R_rhos_704.tif"
+    # in833 = r"C:\_ZeroShoreline\Imagery\Nihau\S2B_MSI_2022_01_28_21_19_22_T04QCK_L2R_rhos_833.tif"
+    # land = r"C:\_ZeroShoreline\Extent\Niihua4.shp"
     
+    # to load a saved model, 
+    in_model = r"C:\_ZeroShoreline\Model\RF_20trees_TrainedStCroix.pkl"
+    with open(in_model, 'rb') as f:
+        model = pickle.load(f)
     
-    water_vals, training_data = near_land(input_blue, input_green, input_red, 
-                                          input_704, input_nir, shapefile, out_dir, write=False)
-    # water_vals_1d, labels_1d, model = train_model(water_vals, training_data)
-    # save_model(model_dir, model_name, model)
-    # prediction_shape, prediction, prediction_meta, pSDBr, out_transform = predict(test_blue, test_green, test_red, test_704, test_nir, shapefile, model)
-    # img_shape = plot_prediction(prediction, prediction_shape, pSDBr)
-    # save_prediction(prediction, pSDBr, prediction_shape, prediction_meta, out_dir, out_transform)
+    # predict 
+    prediction(in492, in560, in665, in833, land, model, out_prediction=None, write_prediction=False)
