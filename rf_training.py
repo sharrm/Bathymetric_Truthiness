@@ -124,6 +124,7 @@ def shape_feature_array(composite_arr):
          
     x_train = np.array(features).transpose((1,2,0)) # shape features list into array
     x_train = [x_train[:,:,i].ravel() for i in range(x_train.shape[2])] # stack features into columns
+    # print(f'x_train: {np.where(np.isnan(x_train))}\n')
     return x_train    
 
 # shapes a single composite image for sklearn training input
@@ -228,11 +229,13 @@ def label_stats(y_):
     true_positives = np.count_nonzero(y_ == 2)
     true_negatives = np.count_nonzero(y_ == 1)
     no_data_value = np.count_nonzero(y_ == 0)
+    nan_data_value = np.count_nonzero(np.isnan(y_))
 
     print('\nTraining label breakdown:')
     print(f'--Percent True: {true_positives / y_.size:1f} ({true_positives:,} True Values)')
     print(f'--Percent False: {true_negatives / y_.size:1f} ({true_negatives:,} False Values)')
     print(f'--Percent No Data: {no_data_value / y_.size:1f} ({no_data_value:,} No Data Values)')
+    print(f'--Percent Nan Data: {nan_data_value / y_.size:1f} ({nan_data_value:,} No Data Values)')
     
     log_output(f'--Percent True: {true_positives / y_.size:1f} ({true_positives:,} True Values)')
     log_output(f'--Percent False: {true_negatives / y_.size:1f} ({true_negatives:,} False Values)')
@@ -292,11 +295,17 @@ def assess_accuracy(model, X_train, Y_train, X_test, Y_test, RF, feature_list):
 def train_model(model_options, test_size, x_train, y_train, num_inputs, data_stats, 
                 model_accuracy, feature_list, write_model, model_dir):
     X_train, X_test, Y_train, Y_test = train_test_split(x_train, y_train, 
-                                                        test_size=test_size, random_state=random_state)
+                                                        test_size=test_size, random_state=random_state, stratify=y_train)
     print('\nPrepared training data...')
     
     # chk = check_data_sizes(x_train, y_train, X_train, X_test, Y_train, Y_test)
     chk = True
+    
+    # added next four lines to exclude zero values
+    X_train = np.delete(X_train, np.where(Y_train == 0), axis = 0)
+    Y_train = np.delete(Y_train, np.where(Y_train == 0), axis=0)
+    X_test = np.delete(X_test, np.where(Y_test == 0), axis = 0)
+    Y_test = np.delete(Y_test, np.where(Y_test == 0), axis=0)
     
     if data_stats:
         label_stats(Y_test)
@@ -306,6 +315,16 @@ def train_model(model_options, test_size, x_train, y_train, num_inputs, data_sta
             print(f'\n\nTraining: {clf}')
             log_output(f'\n\nTraining: {clf}')
             start_time = time.time() # start time for process timing
+            
+            # this is probably messing things up I imagine
+            # X_train = np.nan_to_num(X_train)
+            # Y_train = np.nan_to_num(Y_train)
+            # X_test = np.nan_to_num(X_test)
+            # Y_test = np.nan_to_num(Y_test)
+            
+            # print(np.where(np.isnan(X_train)))
+            # print(np.where(np.isnan(X_train)))
+            
             model = clf.fit(X_train, Y_train)
             print(f'--Trained {clf} in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
             log_output(f'--Trained {clf} in {(time.time() - start_time):.1f} seconds / {(time.time() - start_time)/60:.1f} minutes\n')
@@ -351,7 +370,7 @@ def compute_kfold(model_options, x_train, y_train, n_splits, stratified):
             print(f'\nPerforming {n_splits}-fold cross validation...')
             log_output(f'\n--Performing {n_splits}-fold cross validation...')
         
-        scores = cross_val_score(clf, x_train, y_train, cv=cv, scoring='f1_macro') # ***** check this
+        scores = cross_val_score(clf, x_train, y_train, cv=cv, scoring='jaccard_macro') # ***** check this 'f1_macro'
         print(f'\n--{n_splits}-fold cross validation results:\n--{scores}')
         print("--%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
         log_output(f'\n{n_splits}-fold cross validation results:\n--{scores}'
@@ -379,7 +398,7 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
         log_output(f'--Computing learning curve for {clf}. Time: {datetime.datetime.now().time()}')
         
         train_size_abs, train_scores, test_scores = learning_curve(
-        clf, x_train, y_train, cv=cv, scoring='f1_macro', 
+        clf, x_train, y_train, cv=cv, scoring='jaccard_macro', 
         train_sizes=np.linspace(0.1, 1., 10), random_state=random_state)
             
         # Calculate training and test mean and std
@@ -403,55 +422,104 @@ def compute_learning_curve(model_options, x_train, y_train, n_splits, stratified
 
 def main(): 
     feature_list = [
+# 'Blue',
+# 'Green',
+# 'Red',
+# 'NIR',
+# 'OSI',
+# 'pSDBg',
+# 'pSDBr',
+# 'pSDBgStandardDeviationSlope',
+# 'pSDBgRoughness',
+# 'pSDBrRoughness'
+
 'Blue',
 'Green',
 'Red',
 'NIR',
 'OSI',
 'pSDBg',
-'pSDBr',
 'pSDBgStandardDeviationSlope',
-'pSDBgRoughness',        
+'pSDBgRoughness',
+# 'pSDBrRoughness'
+
 
     ]
 
     # inputs 
     training_composites = [
-                            # turbid training
-                            # chesapeake, hatteras, lookout
-                            # 492, 560, 665, 704, 740, 833, psdbg, psdbr, osi, chl, dogliotti
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Barnegat\\_Features_9Bands\\_Composite\\BarnegatBay_Training_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20230919_1625.tif', 
-                            'P:\\Thesis\\Training\\_Turbid_Training\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20230919_1625.tif'
-                    
-                            # r'P:\\_RSD\\Data\\Imagery\\PR_Turbid_Test\\_Features_15Bands\\_Composite\\Puerto_Real_Smaller_18Bands_composite_20230818_1208.tif'
-                                                                
-                            # r"P:\Thesis\Training\_Turbid_Training\Maine\_Features_9Bands\_Composite\Maine_Training_Revised_9Bands_composite_20230807_1240.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\Barnegat\_Features_9Bands\_Composite\BarnegatBay_Training_9Bands_composite_20230804_1336.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\StCroix\_Features_9Bands\_Composite\StCroix_Extents_Revised_9Bands_composite_20230807_1240.tif",
-                            # r"P:\Thesis\Training\_Turbid_Training\Ponce\_Features_9Bands\_Composite\Ponce_Wakes_Small_9Bands_composite_20230807_1449.tif"
-                           ]
+
+# ten final
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_10Bands\\_Composite\\Maine_Training_Revised_10Bands_composite_20231010_1310.tif', 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_10Bands\\_Composite\\Ponce_Wakes_Small_10Bands_composite_20231010_1310.tif', 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_10Bands\\_Composite\\StCroix_Extents_Revised_10Bands_composite_20231010_1310.tif', 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_10Bands\\_Composite\\FLKeys_Extents_DeepVessel_10Bands_composite_20231010_1310.tif',
+# 'P:\\Thesis\\Training\\_Turbid_Training\\Lookout\\_Features_10Bands\\_Composite\\Lookout_Clouds_10Bands_composite_20231010_1617.tif',
+# 'P:\\Thesis\\Training\\_Turbid_Training\\FLKeys\\_Features_10Bands\\_Composite\\FLKeys_Training_noTurbidity_10Bands_composite_20231010_1656.tif', # might be getting in
+# 'P:\\Thesis\\Training\\_Turbid_Training\\Chesapeake_20230410\\_Features_10Bands\\_Composite\\Chesapeake_Vessels_10Bands_composite_20231010_1705.tif',
+
+
+# rgb 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_3Bands\\_Composite\\Chesapeake_Vessels_3Bands_composite_20231011_1607.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_3Bands\\_Composite\\FLKeys_Extents_DeepVessel_3Bands_composite_20231011_1607.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_3Bands\\_Composite\\Lookout_Clouds_3Bands_composite_20231011_1607.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_3Bands\\_Composite\\Maine_Training_Revised_3Bands_composite_20231011_1607.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_3Bands\\_Composite\\Ponce_Wakes_Small_3Bands_composite_20231011_1607.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_3Bands\\_Composite\\StCroix_Extents_Revised_3Bands_composite_20231011_1607.tif'
+# rgb nir
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_4Bands\\_Composite\\Chesapeake_Vessels_4Bands_composite_20231011_1700.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_4Bands\\_Composite\\FLKeys_Extents_DeepVessel_4Bands_composite_20231011_1700.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_4Bands\\_Composite\\Lookout_Clouds_4Bands_composite_20231011_1700.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_4Bands\\_Composite\\Maine_Training_Revised_4Bands_composite_20231011_1700.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_4Bands\\_Composite\\Ponce_Wakes_Small_4Bands_composite_20231011_1700.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_4Bands\\_Composite\\StCroix_Extents_Revised_4Bands_composite_20231011_1700.tif'
+# rgb nir osi 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_5Bands\\_Composite\\Chesapeake_Vessels_5Bands_composite_20231011_1712.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_5Bands\\_Composite\\FLKeys_Extents_DeepVessel_5Bands_composite_20231011_1712.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_5Bands\\_Composite\\Lookout_Clouds_5Bands_composite_20231011_1712.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_5Bands\\_Composite\\Maine_Training_Revised_5Bands_composite_20231011_1712.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_5Bands\\_Composite\\Ponce_Wakes_Small_5Bands_composite_20231011_1712.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_5Bands\\_Composite\\StCroix_Extents_Revised_5Bands_composite_20231011_1712.tif'
+# rgb nir osi psdbg 
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_6Bands\\_Composite\\Chesapeake_Vessels_6Bands_composite_20231011_1726.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_6Bands\\_Composite\\FLKeys_Extents_DeepVessel_6Bands_composite_20231011_1726.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_6Bands\\_Composite\\Lookout_Clouds_6Bands_composite_20231011_1726.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_6Bands\\_Composite\\Maine_Training_Revised_6Bands_composite_20231011_1726.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_6Bands\\_Composite\\Ponce_Wakes_Small_6Bands_composite_20231011_1726.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_6Bands\\_Composite\\StCroix_Extents_Revised_6Bands_composite_20231011_1726.tif'
+# rgb nir osi psdbg psdbgR psdbgSt
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_8Bands\\_Composite\\Chesapeake_Vessels_8Bands_composite_20231011_1742.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_8Bands\\_Composite\\FLKeys_Extents_DeepVessel_8Bands_composite_20231011_1742.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_8Bands\\_Composite\\Lookout_Clouds_8Bands_composite_20231011_1742.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_8Bands\\_Composite\\Maine_Training_Revised_8Bands_composite_20231011_1742.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_8Bands\\_Composite\\Ponce_Wakes_Small_8Bands_composite_20231011_1742.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_8Bands\\_Composite\\StCroix_Extents_Revised_8Bands_composite_20231011_1742.tif'
+# rgb nir osi psdbg psdbr
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_7Bands\\_Composite\\Chesapeake_Vessels_7Bands_composite_20231012_1018.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_7Bands\\_Composite\\FLKeys_Extents_DeepVessel_7Bands_composite_20231012_1018.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_7Bands\\_Composite\\Lookout_Clouds_7Bands_composite_20231012_1018.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_7Bands\\_Composite\\Maine_Training_Revised_7Bands_composite_20231012_1018.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_7Bands\\_Composite\\Ponce_Wakes_Small_7Bands_composite_20231012_1018.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_7Bands\\_Composite\\StCroix_Extents_Revised_7Bands_composite_20231012_1018.tif'
+# rgb nir psdbg
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_5Bands\\_Composite\\Chesapeake_Vessels_5Bands_composite_20231012_1050.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_5Bands\\_Composite\\FLKeys_Extents_DeepVessel_5Bands_composite_20231012_1050.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_5Bands\\_Composite\\Lookout_Clouds_5Bands_composite_20231012_1050.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_5Bands\\_Composite\\Maine_Training_Revised_5Bands_composite_20231012_1050.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_5Bands\\_Composite\\Ponce_Wakes_Small_5Bands_composite_20231012_1050.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_5Bands\\_Composite\\StCroix_Extents_Revised_5Bands_composite_20231012_1050.tif'
+# rgb nir psdbg psdbgR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_7Bands\\_Composite\\Chesapeake_Vessels_6Bands_composite_20231012_1215.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_7Bands\\_Composite\\FLKeys_Extents_DeepVessel_6Bands_composite_20231012_1215.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_7Bands\\_Composite\\Lookout_Clouds_6Bands_composite_20231012_1215.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_7Bands\\_Composite\\Maine_Training_Revised_6Bands_composite_20231012_1215.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_7Bands\\_Composite\\Ponce_Wakes_Small_6Bands_composite_20231012_1215.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_7Bands\\_Composite\\StCroix_Extents_Revised_6Bands_composite_20231012_1215.tif'
+# rgb nir psdbg psdbgSt
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_7Bands\\_Composite\\Chesapeake_Vessels_6Bands_composite_20231012_1252.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_7Bands\\_Composite\\FLKeys_Extents_DeepVessel_6Bands_composite_20231012_1252.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_7Bands\\_Composite\\Lookout_Clouds_6Bands_composite_20231012_1252.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_7Bands\\_Composite\\Maine_Training_Revised_6Bands_composite_20231012_1252.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_7Bands\\_Composite\\Ponce_Wakes_Small_6Bands_composite_20231012_1252.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_7Bands\\_Composite\\StCroix_Extents_Revised_6Bands_composite_20231012_1252.tif'
+# rgb nir psdbg psdbgR psdbgSt
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_7Bands\\_Composite\\Chesapeake_Vessels_7Bands_composite_20231012_1307.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_7Bands\\_Composite\\FLKeys_Extents_DeepVessel_7Bands_composite_20231012_1307.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_7Bands\\_Composite\\Lookout_Clouds_7Bands_composite_20231012_1307.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_7Bands\\_Composite\\Maine_Training_Revised_7Bands_composite_20231012_1307.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_7Bands\\_Composite\\Ponce_Wakes_Small_7Bands_composite_20231012_1307.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_7Bands\\_Composite\\StCroix_Extents_Revised_7Bands_composite_20231012_1307.tif'
+# rgb nir psdbg psdbgR psdbgSt psdbr
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_8Bands\\_Composite\\Chesapeake_Vessels_8Bands_composite_20231012_1327.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_8Bands\\_Composite\\FLKeys_Extents_DeepVessel_8Bands_composite_20231012_1327.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_8Bands\\_Composite\\Lookout_Clouds_8Bands_composite_20231012_1327.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_8Bands\\_Composite\\Maine_Training_Revised_8Bands_composite_20231012_1327.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_8Bands\\_Composite\\Ponce_Wakes_Small_8Bands_composite_20231012_1327.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_8Bands\\_Composite\\StCroix_Extents_Revised_8Bands_composite_20231012_1327.tif'
+# rgb nir psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_9Bands\\_Composite\\Chesapeake_Vessels_9Bands_composite_20231012_1346.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20231012_1346.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_9Bands\\_Composite\\Lookout_Clouds_9Bands_composite_20231012_1346.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20231012_1346.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20231012_1346.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20231012_1346.tif'
+# nir osi psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_7Bands\\_Composite\\Chesapeake_Vessels_7Bands_composite_20231012_1402.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_7Bands\\_Composite\\FLKeys_Extents_DeepVessel_7Bands_composite_20231012_1402.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_7Bands\\_Composite\\Lookout_Clouds_7Bands_composite_20231012_1402.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_7Bands\\_Composite\\Maine_Training_Revised_7Bands_composite_20231012_1402.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_7Bands\\_Composite\\Ponce_Wakes_Small_7Bands_composite_20231012_1402.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_7Bands\\_Composite\\StCroix_Extents_Revised_7Bands_composite_20231012_1402.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_9Bands\\_Composite\\Chesapeake_Vessels_9Bands_composite_20231012_1423.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20231012_1423.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_9Bands\\_Composite\\Lookout_Clouds_9Bands_composite_20231012_1423.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20231012_1423.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20231012_1423.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20231012_1423.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_10Bands\\_Composite\\Chesapeake_Vessels_10Bands_composite_20231012_1450.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_10Bands\\_Composite\\FLKeys_Extents_DeepVessel_10Bands_composite_20231012_1450.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_10Bands\\_Composite\\Lookout_Clouds_10Bands_composite_20231012_1450.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_10Bands\\_Composite\\Maine_Training_Revised_10Bands_composite_20231012_1450.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_10Bands\\_Composite\\Ponce_Wakes_Small_10Bands_composite_20231012_1450.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_10Bands\\_Composite\\StCroix_Extents_Revised_10Bands_composite_20231012_1450.tif'
+# all again
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_10Bands\\_Composite\\Chesapeake_Vessels_10Bands_composite_20231012_1540.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_10Bands\\_Composite\\FLKeys_Extents_DeepVessel_10Bands_composite_20231012_1540.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_10Bands\\_Composite\\Lookout_Clouds_10Bands_composite_20231012_1540.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_10Bands\\_Composite\\Maine_Training_Revised_10Bands_composite_20231012_1540.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_10Bands\\_Composite\\Ponce_Wakes_Small_10Bands_composite_20231012_1540.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_10Bands\\_Composite\\StCroix_Extents_Revised_10Bands_composite_20231012_1540.tif'
+
+# rgb nir osi psdbg psdbgR psdbgS
+'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_8Bands\\_Composite\\Chesapeake_Vessels_8Bands_composite_20231015_1432.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_8Bands\\_Composite\\FLKeys_Extents_DeepVessel_8Bands_composite_20231015_1432.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_8Bands\\_Composite\\Lookout_Clouds_8Bands_composite_20231015_1432.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_8Bands\\_Composite\\Maine_Training_Revised_8Bands_composite_20231015_1432.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_8Bands\\_Composite\\Ponce_Wakes_Small_8Bands_composite_20231015_1432.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_8Bands\\_Composite\\StCroix_Extents_Revised_8Bands_composite_20231015_1432.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbr
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_9Bands\\_Composite\\Chesapeake_Vessels_9Bands_composite_20231015_1449.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20231015_1449.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_9Bands\\_Composite\\Lookout_Clouds_9Bands_composite_20231015_1449.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20231015_1449.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20231015_1449.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20231015_1449.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbr psdbrR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_10Bands\\_Composite\\Chesapeake_Vessels_10Bands_composite_20231015_1512.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_10Bands\\_Composite\\FLKeys_Extents_DeepVessel_10Bands_composite_20231015_1512.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_10Bands\\_Composite\\Lookout_Clouds_10Bands_composite_20231015_1512.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_10Bands\\_Composite\\Maine_Training_Revised_10Bands_composite_20231015_1512.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_10Bands\\_Composite\\Ponce_Wakes_Small_10Bands_composite_20231015_1512.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_10Bands\\_Composite\\StCroix_Extents_Revised_10Bands_composite_20231015_1512.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbrR
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_9Bands\\_Composite\\Chesapeake_Vessels_9Bands_composite_20231015_1531.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20231015_1531.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_9Bands\\_Composite\\Lookout_Clouds_9Bands_composite_20231015_1531.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20231015_1531.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20231015_1531.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20231015_1531.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbrS
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_9Bands\\_Composite\\Chesapeake_Vessels_9Bands_composite_20231015_1556.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_9Bands\\_Composite\\FLKeys_Extents_DeepVessel_9Bands_composite_20231015_1556.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_9Bands\\_Composite\\Lookout_Clouds_9Bands_composite_20231015_1556.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_9Bands\\_Composite\\Maine_Training_Revised_9Bands_composite_20231015_1556.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_9Bands\\_Composite\\Ponce_Wakes_Small_9Bands_composite_20231015_1556.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_9Bands\\_Composite\\StCroix_Extents_Revised_9Bands_composite_20231015_1556.tif'
+# rgb nir osi psdbg
+# 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Chesapeake\\_Features_6Bands\\_Composite\\Chesapeake_Vessels_6Bands_composite_20231015_1614.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Florida\\_Features_6Bands\\_Composite\\FLKeys_Extents_DeepVessel_6Bands_composite_20231015_1614.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_6Bands\\_Composite\\Lookout_Clouds_6Bands_composite_20231015_1614.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Maine\\_Features_6Bands\\_Composite\\Maine_Training_Revised_6Bands_composite_20231015_1614.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Ponce\\_Features_6Bands\\_Composite\\Ponce_Wakes_Small_6Bands_composite_20231015_1614.tif', 'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\StCroix\\_Features_6Bands\\_Composite\\StCroix_Extents_Revised_6Bands_composite_20231015_1614.tif'
+
+]
     
     training_labels = [
-                        # turbid training
-                        # chesapeake, hatteras, lookout
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Chesapeake_20230316Ex4C_TF.tif',
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Hatteras_20230102Ex4C_TF.tif'
-                        
-                        # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                        # r"P:\_RSD\Data\Masks\_turbidTrainingMasks\Chesapeake_Ex20230316_TF.tif",
-                        # r'P:\_RSD\Data\Masks\_turbidTrainingMasks\Hatteras_Ex20230102_TF.tif',
-                        # r"P:\_RSD\Data\Masks\_turbidTrainingMasks\Lookout_Ex20230306_TF.tif"
-        
-                        r"P:\Thesis\Masks\BarnegatBay_Training_TF.tif",
                         r"P:\Thesis\Masks\Maine_Training_Revised_TF.tif",
                         r"P:\Thesis\Masks\StCroix_Extents_Revised_TF.tif",
                         r"P:\Thesis\Masks\Ponce_Wakes_Small_TF.tif",
-                       # r"P:\Thesis\Masks\PuertoReal_Mask_TF.tif",
-                       # r'P:\Thesis\Masks\PuertoReal_TurbidMask_TF.tif'
-                       # r"P:\Thesis\Masks\FLKeys_Training.tif"
+                        r'P:\Thesis\Masks\FLKeys_Extents_DeepVessel_TF.tif',
+                        r"P:\Thesis\Training\_Manuscript_Train\Masks\Lookout_TF.tif",
+                        r'P:\Thesis\Masks\Chesapeake_Vessels_TF_cloudshadow.tif',
+                        
+                        # r'P:\Thesis\Masks\FLKeys_Training_noTurbidity_TF_cloudshadow.tif',
+                                                
                       ]
+    
+    # me, stcroix, fl, ponce, lookout, peake
     
     training_list = pair_composite_with_labels(training_composites, training_labels)
     
@@ -459,9 +527,9 @@ def main():
     model_options = [
                     # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),                  
-                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=50, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),                  
+                    # RandomForestClassifier(n_estimators=50, min_samples_leaf=5, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=10,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=50, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
@@ -477,11 +545,13 @@ def main():
                     # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=100, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True)
+                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=50, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # RandomForestClassifier(n_estimators=100, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    
+                    # RandomForestClassifier(n_estimators=1000, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=5,   random_state=random_state,n_jobs=n_jobs,oob_score=True),
@@ -491,12 +561,12 @@ def main():
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=100, min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=10,  min_samples_split=20, max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
-                    RandomForestClassifier(n_estimators=200, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
+                    # RandomForestClassifier(n_estimators=200, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=10, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True)
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=20, max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     # # RandomForestClassifier(n_estimators=200, min_samples_leaf=1,   min_samples_split=2,  max_depth=20,  random_state=random_state,n_jobs=n_jobs,oob_score=True),
                     
-                    # HistGradientBoostingClassifier(learning_rate=0.2, l2_regularization=0.2, random_state=random_state, max_iter=100)
+                    # HistGradientBoostingClassifier(learning_rate=0.2, l2_regularization=0.2, random_state=random_state, max_iter=500)
                     
                     # MLPClassifier(hidden_layer_sizes=100, random_state=random_state)
                     
@@ -515,25 +585,34 @@ def main():
     
     # output
     # model_dir = r"P:\_RSD\Models"
-    model_dir = r'P:\Thesis\Models'
+    # model_dir = r'P:\Thesis\Models'
+    model_dir = r'P:\Thesis\Training\_Manuscript_Train\Models'
 
     # train model(s) -- either one or multiple with various hyperparameters options
     num_inputs = len(training_list)
+    print(f'Inputs: {num_inputs}') 
     if num_inputs > 1: # multiple training inputs
+        print(f'Multiple Inputs: {num_inputs}')    
         x_train, x_metadata, x_bounds = shape_multiple_composites(training_list)
         y_train, y_metadata, y_bounds = shape_multiple_labels(training_list)
         
-        compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
-        compute_kfold(model_options, x_train, y_train, n_splits=10, stratified=True)
+        
+        # compute_kfold(model_options, x_train, y_train, n_splits=10, stratified=True)
+        # compute_learning_curve(model_options, x_train, y_train, n_splits=5, stratified=True)
     
-        # train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
-        #             model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+        train_model(model_options, test_size=0.05, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=True, 
+                    model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
     elif num_inputs == 1: # single training input
         x_train, x_metadata, x_bounds = shape_single_composite(training_list[0][0])
         y_train, y_metadata, y_bounds = shape_single_label(training_list[0][1])
 
         train_model(model_options, test_size=0.3, x_train=x_train, y_train=y_train, num_inputs=num_inputs, data_stats=False, 
-                    model_accuracy=True, feature_list=feature_list, write_model=True, model_dir=model_dir)
+                    model_accuracy=False, feature_list=feature_list, write_model=True, model_dir=model_dir)
+    
+    # model_optionsX = [RandomForestClassifier(n_estimators=100, min_samples_leaf=10,  min_samples_split=2,  max_depth=None,random_state=random_state,n_jobs=n_jobs,oob_score=True)]
+    # compute_kfold(model_optionsX, x_train, y_train, n_splits=10, stratified=True)
+    # compute_learning_curve(model_optionsX, x_train, y_train, n_splits=5, stratified=True)
+        
     return None
 
 if __name__ == '__main__':

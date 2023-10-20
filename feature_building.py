@@ -106,7 +106,7 @@ class Features:
                 print('\nCreating pSDBg stdev slope failed...')
                 
             # GDAL Roughness
-            roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name=out_name, output_dir=self.feature_dir)
+            roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name='pSDBg_roughness.tif', output_dir=self.feature_dir)
             if roughTF:
                 print(f'--pSDBg roughness output to {pSDB_roughness_name}')
             else:
@@ -114,13 +114,24 @@ class Features:
                 
             return pSDBg_stdevslope_name, pSDB_roughness_name
         elif window_size < 3:
-            # GDAL Roughness
-            roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name=out_name, output_dir=self.feature_dir)
-            if roughTF:
-                print(f'--pSDBg roughness output to {pSDB_roughness_name}')
+            pSDBr_slope_name = Features._slope(self, pSDBg_name)
+            # https://nickc1.github.io/python,/matlab/2016/05/17/Standard-Deviation-(Filters)-in-Matlab-and-Python.html
+            window_stdevslopeTF, pSDBr_stdevslope_name = sdb.window_stdev(pSDBr_slope_name, window=7, 
+                                                                     stdev_name='pSDBr_StDevSlope.tif', 
+                                                                     output_dir=self.feature_dir)
+            if window_stdevslopeTF:
+                print(f'--pSDBr standard deviation of slope output to {pSDBr_stdevslope_name}')
             else:
-                print('\nCreating pSDB roughness failed...')
-            return pSDB_roughness_name
+                print('\nCreating pSDBr stdev slope failed...')
+            
+            # GDAL Roughness
+            # roughTF, pSDB_roughness_name = sdb.roughness(pSDBg_name, roughness_name=out_name, output_dir=self.feature_dir)
+            # if roughTF:
+            #     print(f'--pSDBg roughness output to {pSDB_roughness_name}')
+            # else:
+            #     print('\nCreating pSDB roughness failed...')
+            
+            return pSDBr_stdevslope_name
     
     ## - predictor composite
     def build_feature_composite(self, num_bands):
@@ -147,7 +158,8 @@ class Features:
     
     def feature_options(self, blue, green, red, red_edge_704, red_edge_740, nir_783, 
                         nir, band_comparisons, cmyk, hsv, odi_1, odi_2, ndwi, ndvi, 
-                        pSDBg, pSDBr, chl_oc3, dogliotti, nechad, pSDBg_roughness, pSDBr_roughness, window_size): # options to pass in
+                        pSDBg, pSDBr, chl_oc3, dogliotti, nechad, pSDBg_roughness, pSDBr_roughness, window_size,
+                        etopo, viirs): # options to pass in
         # list of bands
         rasters = os.listdir(self.rgbnir_dir)
 
@@ -208,7 +220,15 @@ class Features:
                 elif 'Nechad' in band and '833' in band: # nechad (acolite)
                     surface_reflectance['nechad 833 name'] = os.path.join(self.feature_dir, 
                                                          'masked_nechad_' + os.path.basename(band)[-7:-4] + '.tif')
-                    surface_reflectance['nechad 833 band'] = os.path.join(self.rgbnir_dir, band)                      
+                    surface_reflectance['nechad 833 band'] = os.path.join(self.rgbnir_dir, band)    
+                elif 'ETOPO' in band: # ETOPO
+                    surface_reflectance['etopo name'] = os.path.join(self.feature_dir, 
+                                                         'masked_etopo.tif')
+                    surface_reflectance['etopo band'] = os.path.join(self.rgbnir_dir, band)    
+                elif 'VIIRS' in band: # VIIRS
+                    surface_reflectance['viirs name'] = os.path.join(self.feature_dir, 
+                                                         'masked_viirs.tif')
+                    surface_reflectance['viirs band'] = os.path.join(self.rgbnir_dir, band)                      
             except:
                 print('Expected image name ending with wavelength in nanometers (i.e., 492, 560, 665, 833) or band number (e.g., B1, B2, ...) in file name.')
 
@@ -221,9 +241,9 @@ class Features:
         green_aoi = Features.mask_to_aoi(self, surface_reflectance['green band'], surface_reflectance['green name'])
         red_aoi = Features.mask_to_aoi(self, surface_reflectance['red band'], surface_reflectance['red name'])
         # if red_edge_704:
-        red_edge_704_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 704 band'], surface_reflectance['red edge 704 name'])
+        # red_edge_704_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 704 band'], surface_reflectance['red edge 704 name'])
         # if red_edge_740:
-        red_edge_740_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 740 band'], surface_reflectance['red edge 740 name'])
+        # red_edge_740_aoi = Features.mask_to_aoi(self, surface_reflectance['red edge 740 band'], surface_reflectance['red edge 740 name'])
         nir_aoi = Features.mask_to_aoi(self, surface_reflectance['nir band'], surface_reflectance['nir name'])
         
         if pSDBg:
@@ -237,12 +257,12 @@ class Features:
         if red:
             self.composite_features_list.append(red_aoi)
             features_list.append("'Red',")
-        if red_edge_704:
-            self.composite_features_list.append(red_edge_704_aoi)
-            features_list.append("'RedEdge704',")
-        if red_edge_740:
-            self.composite_features_list.append(red_edge_740_aoi)
-            features_list.append("'RedEdge740',")
+        # if red_edge_704:
+        #     self.composite_features_list.append(red_edge_704_aoi)
+        #     features_list.append("'RedEdge704',")
+        # if red_edge_740:
+            # self.composite_features_list.append(red_edge_740_aoi)
+            # features_list.append("'RedEdge740',")
         if nir_783:
             nir_783_aoi = Features.mask_to_aoi(self, surface_reflectance['nir 783 band'], surface_reflectance['nir 783 name'])            
             self.composite_features_list.append(nir_783_aoi)
@@ -278,8 +298,8 @@ class Features:
             brTF, comparison_fnames, compfeature_dict = sdb.band_comparisons(blue_aoi, 
                                                             green_aoi, 
                                                             red_aoi, 
-                                                            red_edge_704_aoi,
-                                                            red_edge_740_aoi,
+                                                            # red_edge_704_aoi,
+                                                            # red_edge_740_aoi,
                                                             # nir_783_aoi,
                                                             nir_aoi, 
                                                             output_dir=self.feature_dir)
@@ -289,22 +309,22 @@ class Features:
             # features_list.append("'DD_pSDBr-704',")
         if cmyk:
             cmykTF, cyan_aoi, magenta_aoi, yellow_aoi, black_aoi = sdb.rgb_to_cmyk(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
-            # self.composite_features_list.append(cyan_aoi)
-            # self.composite_features_list.append(magenta_aoi)
-            # self.composite_features_list.append(yellow_aoi)
+            self.composite_features_list.append(cyan_aoi)
+            self.composite_features_list.append(magenta_aoi)
+            self.composite_features_list.append(yellow_aoi)
             self.composite_features_list.append(black_aoi)
-            # features_list.append("'Cyan',")
-            # features_list.append("'Magenta',")
-            # features_list.append("'Yellow',")
+            features_list.append("'Cyan',")
+            features_list.append("'Magenta',")
+            features_list.append("'Yellow',")
             features_list.append("'Black',")
         if hsv:
             hsvTF, hue_aoi, saturation_aoi, value_aoi = sdb.rgb_to_hsv(red_aoi, green_aoi, blue_aoi, output_dir=self.feature_dir)
-            # self.composite_features_list.append(hue_aoi)
+            self.composite_features_list.append(hue_aoi)
             self.composite_features_list.append(saturation_aoi)
-            # self.composite_features_list.append(value_aoi)
-            # features_list.append("'Hue',")
+            self.composite_features_list.append(value_aoi)
+            features_list.append("'Hue',")
             features_list.append("'Saturation',")
-            # features_list.append("'Intensity',")
+            features_list.append("'Intensity',")
         if odi_1:
             odi_1 = Features.ODI_1(self, blue_aoi, green_aoi, odi1_name='odi_1.tif')
             self.composite_features_list.append(odi_1)
@@ -334,14 +354,30 @@ class Features:
             self.composite_features_list.append(pSDBg_roughness_aoi)
             features_list.append("'pSDBgStandardDeviationSlope',")
             features_list.append("'pSDBgRoughness',")
+        # if pSDBg_roughness:
+        #     pSDBg_roughness_aoi = Features._surface_roughness(self, pSDBg_aoi, window_size=2, out_name='pSDBg_roughness.tif')
+        #     self.composite_features_list.append(pSDBg_roughness_aoi)
+        #     features_list.append("'pSDBgRoughness',")
         if pSDBg_roughness and window_size < 3:
-            pSDBg_roughness_aoi = Features._surface_roughness(self, pSDBg_aoi, window_size, out_name='pSDBg_roughness.tif')
+            pSDBg_roughness_aoi, pSDBg_stdevslope_name = Features._surface_roughness(self, pSDBg_aoi, window_size, out_name='pSDBg_roughness.tif')
             self.composite_features_list.append(pSDBg_roughness_aoi)
             features_list.append("'pSDBgRoughness',")
         if pSDBr_roughness:
-            pSDBr_roughness_aoi = Features._surface_roughness(self, pSDBr_aoi, window_size, out_name='pSDBr_roughness.tif')
-            self.composite_features_list.append(pSDBr_roughness_aoi)
-            features_list.append("'pSDBrRoughness',")
+            if not pSDBr: # pSDBr_roughness_aoi,
+                pSDBr_aoi = Features.pSDB(self, blue_aoi, red_aoi, rol_name='pSDBr.tif')
+            pSDBr_stdevslope_aoi = Features._surface_roughness(self, pSDBr_aoi, window_size=2, out_name='pSDBr_roughness.tif')
+            # self.composite_features_list.append(pSDBr_roughness_aoi)
+            # features_list.append("'pSDBrRoughness',")
+            self.composite_features_list.append(pSDBr_stdevslope_aoi)
+            features_list.append("'pSDBrStandardDeviationSlope',")
+        if etopo:
+            etopo_aoi = Features.mask_to_aoi(self, surface_reflectance['etopo band'], surface_reflectance['etopo name'])
+            self.composite_features_list.append(etopo_aoi)
+            features_list.append("'ETOPO',")
+        if viirs:
+            viirs_aoi = Features.mask_to_aoi(self, surface_reflectance['viirs band'], surface_reflectance['viirs name'])
+            self.composite_features_list.append(viirs_aoi)
+            features_list.append("'VIIRS',")            
         
         num_bands = len(features_list)
         
@@ -393,23 +429,46 @@ def rgb_composite(rgb_dir):
 # %% - main
 def main():    
     # input imagery
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTrainingVIIRS']
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTestingVIIRS']
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTrainingETOPO']
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTestingETOPO']
+    
     # train_test = [r'C:\_Turbidity\Imagery\_turbidTraining_rhos']
-    train_test = [r'C:\_Turbidity\Imagery\_turbidTesting_rhos'] 
+    # train_test = [r'C:\_Turbidity\Imagery\_turbidTesting_rhos'] 
     # train_test = [r'P:\_RSD\Data\Imagery\_turbidTestingChesapeake'] 
     # train_test = [r'P:\Thesis\Training\_Turbid_Training']
     # train_test = [r'P:\Thesis\Test Data\_Turbid_Tests\_RSD']
+    # train_test = [r'P:\Thesis\Test Data\_Testing']
+    
+    # closer to final
+    # train_test = [r'P:\Thesis\Training\_Manuscript_Train\Imagery']
+    train_test = [r'P:\Thesis\Test Data\_Manuscript_Test\Imagery']
+    
         
     img_dirs = []
     for loc in train_test:
         [img_dirs.append(os.path.join(loc, folder)) for folder in os.listdir(loc)]
     
     # input aoi
+    # extent_dir = [r"C:\_Turbidity\Extents\_turbidTestingExETOPO"]
+    
     # extent_dir = [r'C:\_Turbidity\Extents\_turbidTrainingExMC']
-    extent_dir = [r"C:\_Turbidity\Extents\_turbidTestingEx"]
+    # extent_dir = [r"C:\_Turbidity\Extents\_turbidTestingEx"]
     # extent_dir = [r"P:\_RSD\Data\Extents\_turbidTestingExChesapeake"]
     # extent_dir = [r'P:\Thesis\Extents\_Turbid_Training']
+    # extent_dir = [r'P:\Thesis\Extents\_Training\Florida_X']#, r'P:\Thesis\Extents\_Turbid_Training']
     # extent_dir = [r'P:\Thesis\Extents\_Testing']
-   
+    # extent_dir = [r'P:\Thesis\Masks']
+    # extent_dir = [r'P:\Thesis\Masks\Cape']
+    # extent_dir = [r'P:\Thesis\Extents\_Training\Chesapeake']
+    # extent_dir = [r'P:\Thesis\Extents\_Training\Ponce']
+    # extent_dir = [r'P:\Thesis\Extents\_Training\Lookout']
+    
+    # closer to final
+    # extent_dir = [r'P:\Thesis\Training\_Manuscript_Train\Extents']
+    extent_dir = [r'P:\Thesis\Test Data\_Manuscript_Test\Extents']
+    
 
     maskSHP_dir = []
     for loc in extent_dir:
@@ -417,12 +476,12 @@ def main():
 
     ft_options = {'blue': True, 
                   'green': True,  
-                  'red':  True, 
+                  'red': True, 
                   'red_edge_704': False,
                   'red_edge_740': False,
                   'nir_783': False, 
                   'nir': True,
-                  'band_comparisons': True,
+                  'band_comparisons': False,
                   'cmyk': False,
                   'hsv': False,
                   'odi_1': True, 
@@ -430,19 +489,25 @@ def main():
                   'ndwi': False,
                   'ndvi': False,
                   'pSDBg': True,
-                  'pSDBr': True,
+                  'pSDBr': False,
                   'chl_oc3': False,
                   'dogliotti': False,
                   'nechad': False,
-                  'pSDBg_roughness': True,
+                  'pSDBg_roughness': False,
                   'pSDBr_roughness': False,
-                  'window_size':7}
+                  'window_size':7,
+                  'etopo': False,
+                  'viirs': False}
+    
+                    # Add in VIIRS
     
     num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 ) # exclude window size and include two for roughness
     if not ft_options['pSDBg_roughness']:
         num_options = str(sum(ft_options.values()) - (ft_options['window_size']))
     elif ft_options['cmyk']:
         num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 1 ) #3 w_ saturation,rougness,intensity
+    elif ft_options['hsv']:
+        num_options = str(sum(ft_options.values()) - (ft_options['window_size']) + 3 ) #3 w_ saturation,rougness,intensity
     
     final_composite_list = []
 

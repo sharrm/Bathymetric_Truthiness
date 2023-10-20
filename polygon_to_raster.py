@@ -21,15 +21,14 @@ import os
 
 poly_to_raster = True
 
-# 
-# "P:\_RSD\Data\Imagery\_turbidTraining_rhos\Hatteras_20230102\_Features_13Bands\_Composite\Hatteras_Ex20230102_13Bands_composite_20230825_1158.tif"
-# 'P:\\_RSD\\Data\\Imagery\\_turbidTraining_rhos\\Lookout_20230306\\_Features_13Bands\\_Composite\\Lookout_Ex20230306_13Bands_composite_20230825_1130.tif'
+# polygon = r"P:\Thesis\Masks\Cape\CapeCod_Mask.shp"
+# composite_raster = r'P:\\Thesis\\Test Data\\_Testing\\Mass\\_Features_10Bands\\_Composite\\CapeCod_Mask_10Bands_composite_20231008_1743.tif'
 
-polygon = r"C:\_Turbidity\Extents\_turbidTrainingExMC\Maine_20221006Ex4C.shp"
-composite_raster = r'C:\\_Turbidity\\Imagery\\_turbidTraining_rhos\\Maine\\_Features_8Bands\\_Composite\\Maine_20221006Ex4C_9Bands_composite_20230914_0845.tif'
+polygon = r"P:\Thesis\Training\_Manuscript_Train\Extents\Lookout_Clouds.shp"
+composite_raster = r'P:\\Thesis\\Training\\_Manuscript_Train\\Imagery\\Lookout\\_Features_8Bands\\_Composite\\Lookout_Clouds_8Bands_composite_20231015_1432.tif'
 
 # binary_raster = r"P:\Thesis\Samples\Raster" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
-binary_raster = r"C:\_Turbidity\Masks\_turbidTrainingMasks" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
+binary_raster = r"P:\Thesis\Test Data\_Manuscript_Test\Masks" + '\\' + os.path.basename(polygon).split('.')[0] + '_TF.tif'
 
 if poly_to_raster:   
     # Load polygon

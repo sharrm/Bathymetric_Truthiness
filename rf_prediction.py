@@ -109,6 +109,17 @@ def log_output(in_string):
     f.close()
     return None
 
+# pair composite image with labels
+def pair_composite_with_labels(test_rasters, test_labels):
+    prediction_list = []
+    for comp in test_rasters:
+        for label in test_labels:
+            if rasterio.open(comp).bounds == rasterio.open(label).bounds:
+                prediction_list.append((comp,label))
+            else:
+                continue
+    return prediction_list
+
 # read in geotiff and return the image array, metadata, and boundary
 def read_image(image):
     img = rasterio.open(image)
@@ -167,36 +178,34 @@ def write_raster(raster, img_meta, output_path):
     print(f'Saved prediction raster: {output_path}')
     return None
 
+
+# %% - evaluation
+
 # compute intersection over union results
 def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, metadata):
     print(f'Performing intersection over union analysis on {test_mask}')
     bandmask = rasterio.open(test_mask).read(1)
-    iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
-    print(f'--Mean IOU: {iou_score}')
     
     differences = np.where(bandmask < im_predicted, 5, bandmask + im_predicted)
     differences = np.where(bandmask > im_predicted, 3, differences)
     
+    compare = bandmask.flatten()
+    
     if iou_metrics:
         print('--Computing Precision, Recall, F1-Score...')
-        classification = classification_report(bandmask.flatten(), im_predicted.flatten())
-        print(f'--Classification Report:\n{classification}')
-        # prc = precision_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
-        # print (f'--Precision: {prc:.3f}') 
-        # rcll = recall_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
-        # print (f'--Recall: {rcll:.3f}') 
-        # f1 = f1_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
-        # print (f'--F1-Score: {f1:.3f}') 
+        # classification = classification_report(bandmask.flatten(), im_predicted.flatten())
+        # print(f'--Classification Report:\n{classification}')
+        prc = precision_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        print (f'--Precision: {prc:.3f}') 
+        rcll = recall_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        print (f'--Recall: {rcll:.3f}') 
+        f1 = f1_score(bandmask.flatten(), im_predicted.flatten(), average='macro')
+        print (f'--F1-Score: {f1:.3f}') 
         # log_output(f',{prc:.3f},{rcll:.3f},{f1:.3f},{iou_score:.3f}')
-
-        # false_positives = np.count_nonzero(differences == 5)
-        # false_negatives = np.count_nonzero(differences == 3)
-        
-        
-        # print(f'\n--Number of false positives: {false_positives:,}')
-        # print(f'--Percentage of false positives: {(false_positives/differences.size)*100:.2f}')
-        # print(f'--Number of false_negatives: {false_negatives:,}')
-        # print(f'--Percentage of false_negatives: {(false_negatives/differences.size)*100:.2f}\n')
+        iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average='macro') 
+        print(f'--Mean IOU: {iou_score:.3f}') # 'macro'
+        # iou_score = jaccard_score(bandmask.ravel(), im_predicted.ravel(), average=None) # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html
+        # print(f'--IOU: {iou_score}')
     
     if plot_iou:
         plot_title = plot_title + '_IOU'
@@ -205,7 +214,7 @@ def compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, writ
     if write_iou:
         difference_path = prediction_path.replace('prediction_', 'prediction_diff_')
         write_raster(differences, metadata, difference_path) # add meta 
-    return None
+    return iou_score
 
 def prediction_probability(prediction_path, model, im_prob_predicted, X_new, rc, u_metadata, write_prediction):
     prediction_prob = model.predict_proba(X_new)
@@ -225,27 +234,27 @@ def prediction_probability(prediction_path, model, im_prob_predicted, X_new, rc,
 
 # use model for prediction
 def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, 
-                write_prediction, iou_metrics, plot_iou, perform_iou, write_iou, prob_plot, test_mask):
+                write_prediction, iou_metrics, plot_iou, perform_iou, write_iou, prob_plot, test_mask,
+                morph):
     print('--Predicting...')
     prediction_time = time.time()
     prediction = model.predict(X_new)
     performance = round(prediction.size/(time.time() - prediction_time), -3)
-    print(f'****Prediction time: {(time.time() - prediction_time):.3f} {performance}')
+    print(f'****Prediction time: {(time.time() - prediction_time):.3f} {performance:,.0f}')
 
     im_predicted[rc[:,0],rc[:,1]] = prediction
     
     # insert morphology
-    # pred_dilate = morphology.dilation(im_predicted)
-    # pred_erode = morphology.erosion(im_predicted)
-    # pred_dilate = morphology.dilation(pred_erode)
-    # pred_erode = morphology.erosion(pred_dilate)
-    # pred_erode = morphology.erosion(pred_erode)
-    # pred_dilate = morphology.dilation(pred_erode)
-    # pred_erode = morphology.erosion(pred_dilate)
-    # pred_dilate = morphology.dilation(pred_erode)
-    # pred_erode = morphology.erosion(pred_dilate)
-    # im_predicted = morphology.dilation(pred_erode)
-    # im_predicted = morphology.dilation(pred_dilate)
+    if morph:
+        pred_erode = morphology.erosion(im_predicted)
+        pred_dilate = morphology.dilation(pred_erode)
+        # pred_erode = morphology.erosion(pred_dilate)
+        # pred_dilate = morphology.dilation(pred_erode)
+        im_predicted = pred_dilate
+        
+        # med = median_filter(im_predicted, size=3)
+        # im_predicted = med
+        
     
     print('--Plotting...')
     plot_title = os.path.basename(pkl).split('_202')[0]
@@ -266,8 +275,13 @@ def predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model,
         
     # intersection over union
     if perform_iou:
-        compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, u_metadata)
-    return im_predicted.size
+        mean_iou = compute_iou(test_mask, im_predicted, iou_metrics, plot_iou, plot_title, write_iou, prediction_path, u_metadata)
+    else:
+        mean_iou = 0
+    return im_predicted.size, mean_iou
+
+
+# %% - sensitivity
 
 # shapes multi-band image array and returns training data ready for sklearn
 def shape_test_array(composite_arr):
@@ -275,11 +289,11 @@ def shape_test_array(composite_arr):
     
     # for i, __ in enumerate(feature_list):
     for i, __ in enumerate(range(0, composite_arr.shape[2], 1)):
-         ft = composite_arr[:,:,i] # take ith band
-         ft[ft == -9999.] = 0. # set '-9999.' values to 0.
-         ft = np.nan_to_num(ft) # set nan values to 0.
-         ft[(ft < lower_limit) | (ft > upper_limit)] = 0. # value precision
-         features.append(scaleData(ft)) # scale data and append to features list
+          ft = composite_arr[:,:,i] # take ith band
+          ft[ft == -9999.] = 0. # set '-9999.' values to 0.
+          ft = np.nan_to_num(ft) # set nan values to 0.
+          ft[(ft < lower_limit) | (ft > upper_limit)] = 0. # value precision
+          features.append(scaleData(ft)) # scale data and append to features list
          
     x_train = np.array(features).transpose((1,2,0)) # shape features list into array
     x_train = [x_train[:,:,i].ravel() for i in range(x_train.shape[2])] # stack features into columns
@@ -330,16 +344,14 @@ def shape_multiple_labels(label_list):
     return y_train, y_metadata, y_bounds
 
 # training accuracy
-def assess_accuracy(model, X_test, Y_test):
-    print('\nAssessing accuracy...') 
+def assess_accuracy(model, X_test, Y_test):   
+
+    X_test = np.delete(X_test, np.where(Y_test == 0), axis = 0)
+    Y_test = np.delete(Y_test, np.where(Y_test == 0), axis=0)
     
-    # print('--Computing Precision, Recall, F1-Score...')
-    # classification = classification_report(Y_test, model.predict(X_test), labels=model.classes_)
-    # print(f'--Classification Report:\n{classification}')
-        
-    # print('\nComputing accuracy...')
-    # acc1 = accuracy_score(Y_test, model.predict(X_test)) * 100.0
-    # print (f'--Validation Accuracy: {acc1:.2f} %') 
+    print('\nComputing accuracy...')
+    acc1 = accuracy_score(Y_test, model.predict(X_test)) * 100.0
+    print (f'--Validation Accuracy: {acc1:.2f} %') 
     prc = precision_score(Y_test, model.predict(X_test), average='macro')
     print (f'--Precision: {prc:.3f}') 
     rcll = recall_score(Y_test, model.predict(X_test), average='macro')
@@ -351,169 +363,184 @@ def assess_accuracy(model, X_test, Y_test):
     log_output(f'\n{model.n_estimators},{model.min_samples_leaf},{model.min_samples_split},{model.max_depth}')
     log_output(f',{prc:.3f},{rcll:.3f},{f1:.3f},{iou_score:.3f}')
     
-    return None
-
-# pair composite image with labels
-def pair_composite_with_labels(test_rasters, test_labels):
-    prediction_list = []
-    for comp in test_rasters:
-        for label in test_labels:
-            if rasterio.open(comp).bounds == rasterio.open(label).bounds:
-                prediction_list.append((comp,label))
-            else:
-                continue
-    return prediction_list
+    return iou_score
 
 
 # %% -- main
 
 def main():
     # inputs
-    test_models = [#r"C:\_Thesis\Models\_Sensitivity\RF__100trees_10leaf_2split_Nonedepth_20230411_1132.pkl"
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1538.pkl', # without turbid FLKeys water
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1518.pkl' # turbid FLKeys water
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1453.pkl' # updated ponce
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1415.pkl' # without barnegat
-                   # r'P:\Thesis\Models\RF_9B_100trees_20leaf_2split_Nonedepth_20230807_1341.pkl' # 20 leaf
-                   # r'P:\Thesis\Models\RF_9B_100trees_1leaf_2split_Nonedepth_20230807_1328.pkl' # no leaf
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230807_1309.pkl' # 10 leaf, lacking vessels
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230804_1338.pkl'
-                   # r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230804_1429.pkl'
-                   
-                   # turbid models
-                   # r'P:\Thesis\Models\RF_5B_100trees_1leaf_2split_Nonedepth_20230818_1358.pkl',
-                   # r'P:\Thesis\Models\Hist_5B_2In_LR0.2_L20.2_20230818_1358.pkl'
-                   # r'P:\Thesis\Models\RF_7B_200trees_1leaf_2split_Nonedepth_20230821_1458.pkl'
-                   # r'P:\Thesis\Models\RF_8B_200trees_1leaf_2split_Nonedepth_20230824_1557.pkl' # chl_oc3
-                   
-                   # including cb
-                   # r'C:\_Thesis\Models\_4LocationSensitivity\RF_11B_100trees_10leaf_2split_Nonedepth_20230814_1446.pkl',
-                   # r'C:\_Thesis\Models\_4LocationSensitivity\RF_11B_100trees_1leaf_10split_Nonedepth_20230814_1446.pkl'
-                   
-                   # Sensitivity with FL Keys 
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_10split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_10leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_50trees_100leaf_20split_20depth_20230810_1531.pkl",
-                    
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_10split_Nonedepth_20230810_1510.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_10leaf_2split_Nonedepth_20230810_1510.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_100trees_100leaf_20split_20depth_20230810_1531.pkl",
-                    
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_5depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_10split_Nonedepth_20230810_1453.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_1leaf_20split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_10leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_10leaf_20split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_10depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_20depth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_2split_Nonedepth_20230810_1531.pkl",
-                    # r"C:\_Thesis\Models\_4LocationSensitivity\RF_9B_200trees_100leaf_20split_20depth_20230810_1531.pkl"
-                    
-                    # boosting
-                    # r'P:\Thesis\Models\XGB_9B_4In_NumEst100_20230815_1519.pkl'
-                    
-                    # turbid tests: chesapeake bay, hatteras inlet, cape lookout
-                    # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                    # r'P:\Thesis\Models\RF_13B_100trees_1leaf_2split_Nonedepth_20230825_1217.pkl',
-                    # r'P:\Thesis\Models\Hist_13B_2In_LR0.2_L20.2_20230825_1217.pkl'
-                    
-                    # 492, 560, 665, 704, 740, 833, psdbg, psdbr, osi, chl, dogliotti
-                    # r'P:\Thesis\Models\RF_11B_100trees_1leaf_2split_Nonedepth_20230825_1626.pkl'
-                    r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20230919_1628.pkl'
+    test_models = [
+                    # 492, 560, 665, 833, psdbg, psdbr, osi, roughness x3
+                    # r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231007_1020.pkl' # works pretty well *keep
+
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231009_1339.pkl' # seeming better for KW, vessels, dark area, but could be better
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231009_1344.pkl' # pretty good
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231009_1433.pkl'
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231009_1456.pkl' # great on everything but KW
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231010_0900.pkl' # looking great, except for clouds at KW and Great Lakes
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231010_1050.pkl'
+
+# closer to final
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231010_1323.pkl'
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231010_1442.pkl'
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1045.pkl', # me, stcroix, fl x2, ponce, lookout, peake
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1115.pkl', # me, stcroix, fl, ponce, lookout # great lakes worse
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1150.pkl', # me, stcroix, fl, ponce, lookout
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1207.pkl', # me, stcroix, flx2, ponce, lookout # not good
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1229.pkl', # me, stcroix, fl, ponce, lookout, peake # probably add fl 2 # final final
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231011_1251.pkl' # me, stcroix, fl, ponce, lookout, peake, barn # worse
+
+# 1514
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231012_1514.pkl'
+# test again
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231012_1543.pkl'
+
+# rgb nir osi psdbg psdbgR psdbgS
+# r'P:\Thesis\Models\RF_8B_100trees_10leaf_2split_Nonedepth_20231015_1438.pkl'
+# rgb nir osi psdbg psdbr psdbgR psdbgS
+# r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20231015_1501.pkl'
+# rgb nir osi psdbg psdbgR psdbgS psdbr psdbrR
+# r'P:\Thesis\Models\RF_10B_100trees_10leaf_2split_Nonedepth_20231015_1516.pkl'
+# rgb nir osi psdbg psdbgR psdbgS psdbrR
+# r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20231015_1534.pkl'
+# rgb nir osi psdbg psdbgR psdbgS psdbrS
+# r'P:\Thesis\Models\RF_9B_100trees_10leaf_2split_Nonedepth_20231015_1559.pkl'
+# rgb nir osi psdbg
+# r'P:\Thesis\Training\_Manuscript_Train\Models\RF_6B_100trees_10leaf_2split_Nonedepth_20231015_1619.pkl'
+
+# rgb nir osi psdbg psdbgR psdbgS psdbrR
+# r'P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_200trees_10leaf_2split_Nonedepth_20231015_1703.pkl',
+# r'P:\Thesis\Training\_Manuscript_Train\Models\Hist_9B_6In_LR0.2_L20.2_20231015_1703.pkl'
+
+# rgb nir osi psdbg psdbgR psdbgS psdbrR # sensitivity 
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_2split_5depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_2split_10depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_2split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_2split_Nonedepth_20231015_1729.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_20split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_1leaf_50split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_10leaf_2split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_10leaf_20split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_100leaf_2split_10depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_100leaf_2split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_100leaf_2split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_50trees_100leaf_20split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_2split_5depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_2split_10depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_2split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_2split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_20split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_1leaf_50split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_10leaf_20split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_100leaf_2split_10depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_100leaf_2split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_100leaf_2split_Nonedepth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_100trees_100leaf_20split_20depth_20231015_1737.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_9B_1000trees_10leaf_2split_Nonedepth_20231015_1737.pkl",
+
+# rgb nir osi psdbg psdbgR psdbgS # sensitivity 
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_50trees_1leaf_2split_20depth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_50trees_1leaf_2split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_50trees_1leaf_20split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_50trees_1leaf_50split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_50trees_5leaf_2split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_1leaf_2split_20depth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_1leaf_20split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_1leaf_50split_Nonedepth_20231018_0939.pkl",
+r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_10leaf_2split_Nonedepth_20231018_0939.pkl",
+# r"P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_100leaf_2split_Nonedepth_20231018_0939.pkl",
+
+# all data 8 bands
+# r'P:\Thesis\Training\_Manuscript_Train\Models\RF_8B_100trees_10leaf_2split_Nonedepth_20231018_1812.pkl'
+
                    ]
     
     test_composites = [
-                        # turbid tests: chesapeake bay, hatteras inlet, cape lookout
-                        # 492, 560, 665, 704, 740, 780, 833, psdbg, psdbr, osi, psdbg roughness, chl
-                        # 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230410\\_Features_9Bands\\_Composite\\ChesapeakeBay_vCompositeTest_9Bands_composite_20230920_1344.tif'
-'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf_9Bands_composite_20230920_1459.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf2_9Bands_composite_20230920_1459.tif', 'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\KeyWest\\_Features_9Bands\\_Composite\\KeyWestF_NorthHalf3_9Bands_composite_20230920_1459.tif'
-        
-                        # r'P:\\_RSD\\Data\\Imagery\\_Testing\\FLKeys\\_Features_9Bands\\_Composite\\FLKeys_Training_8Bands_composite_20230824_1603.tif'
-                        # 'P:\\_RSD\\Data\\Imagery\\FLKeys\\_Features_3Bands\\_Composite\\FLKeys_Training_5Bands_composite_20230818_1355.tif'
-                        # r'P:\Thesis\Test Data\_Turbid_Tests\_RSD\Chesapeake_20230410\_Features_8Bands\_Composite\ChesapeakeBay_vCompositeTest_7Bands_composite_20230821_1424.tif'
-        
-                        # cape lookout composite tests
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\CapeLookout_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\GreenTest\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\CapeLookout_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230815_1459.tif",
-                        # r"C:\_Thesis\Data\LookoutComposite\_Test\RedTest\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230815_1459.tif"
-        
-                        # chesapeake composite tests
-                        # r"C:\_Thesis\Data\ChesapeakeComposite\_Test\GreenTest\_Features_9Bands\_Composite\ChesapeakeBay_vCompositeTest_9Bands_composite_20230814_1244.tif",
-                        # r"C:\_Thesis\Data\ChesapeakeComposite\_Test\RedTest\Imagery\_Features_9Bands\_Composite\ChesapeakeBay_vCompositeTest_9Bands_composite_20230815_1259.tif",
-                        
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\CapeLookout\\_Features_9Bands\\_Composite\\CapeLookout_9Bands_composite_20230810_0923.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Hatteras_Inlet\\_Features_9Bands\\_Composite\\Hatteras_Inlet_9Bands_composite_20230810_0916.tif',
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\Moorehead\_Features_9Bands\_Composite\Moorehead4_Extents_9Bands_composite_20230502_0959.tif",
-                        # r'P:\\Thesis\\Test Data\\_New_Feature_Building\\KeyWest_Bahia\\Imagery\\_Features_9Bands\\_Composite\\KeyWest_Bahia_Extents_9Bands_composite_20230807_0959.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Hatteras\\_Features_9Bands\\_Composite\\Hatteras_Extents_9Bands_composite_20230804_1404.tif',
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\ChesapeakeBay\_Features_9Bands\_Composite\ChesapeakeBay_proj_water_9Bands_composite_20230504_1354.tif",
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\Chesapeake2\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230808_1258.tif',
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230410\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230811_1311.tif', 
-                        # r'P:\\Thesis\\Test Data\\_Turbid_Tests\\_RSD\\Chesapeake_20230510\\_Features_9Bands\\_Composite\\ChesapeakeBay_proj_water_9Bands_composite_20230811_1311.tif'
-                        # r"P:\Thesis\Test Data\_Turbid_Tests\Moorehead\_Features_9Bands\_Composite\Moorehead_Extents_9Bands_composite_20230502_0959.tif",
-                        # r"C:\_Thesis\Data\Testing\GreatLakes\_Features_9Bands\_Composite\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\Niihau\_Features_9Bands\_Composite\Niihua4_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\PuertoReal\_Features_9Bands\_Composite\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif",
-                        # r"C:\_Thesis\Data\Testing\Saipan\_Features_9Bands\_Composite\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif"
-                        # r"P:\Thesis\Training\_New_Feature_Building\FL_Keys\_Features_9Bands\_Composite\FLKeys_Training_9Bands_composite_20230412_0954.tif"
+
+# ten close to final
+    # 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_10Bands\\_Composite\\GreatLakes_Mask_NoLand_10Bands_composite_20231010_1332.tif',
+    # 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_10Bands\\_Composite\\KeyWest_Mask_10Bands_composite_20231010_1332.tif', 
+    # 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_10Bands\\_Composite\\CapeCod_Mask_10Bands_composite_20231010_1332.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_10Bands\\_Composite\\Niihua4_10Bands_composite_20231010_1332.tif', 
+    # 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_10Bands\\_Composite\\Saipan_Extents_NoIsland_10Bands_composite_20231010_1332.tif'
+
+# rgb
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_3Bands\\_Composite\\GreatLakes_Mask_NoLand_3Bands_composite_20231011_1558.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_3Bands\\_Composite\\KeyWest_Mask_3Bands_composite_20231011_1558.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_3Bands\\_Composite\\CapeCod_Mask_3Bands_composite_20231011_1558.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_3Bands\\_Composite\\Niihua_Mask_3Bands_composite_20231011_1558.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_3Bands\\_Composite\\Saipan_Extents_NoIsland_3Bands_composite_20231011_1558.tif'
+# rgb nir
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_4Bands\\_Composite\\GreatLakes_Mask_NoLand_4Bands_composite_20231011_1709.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_4Bands\\_Composite\\KeyWest_Mask_4Bands_composite_20231011_1709.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_4Bands\\_Composite\\CapeCod_Mask_4Bands_composite_20231011_1709.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_4Bands\\_Composite\\Niihua_Mask_4Bands_composite_20231011_1709.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_4Bands\\_Composite\\Saipan_Extents_NoIsland_4Bands_composite_20231011_1709.tif'
+# rgb nir osi 
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_5Bands\\_Composite\\GreatLakes_Mask_NoLand_5Bands_composite_20231011_1722.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_5Bands\\_Composite\\KeyWest_Mask_5Bands_composite_20231011_1722.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_5Bands\\_Composite\\CapeCod_Mask_5Bands_composite_20231011_1722.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_5Bands\\_Composite\\Niihua_Mask_5Bands_composite_20231011_1722.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_5Bands\\_Composite\\Saipan_Extents_NoIsland_5Bands_composite_20231011_1722.tif'
+# rgb nir osi psdbg 
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_6Bands\\_Composite\\GreatLakes_Mask_NoLand_6Bands_composite_20231011_1725.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_6Bands\\_Composite\\KeyWest_Mask_6Bands_composite_20231011_1725.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_6Bands\\_Composite\\CapeCod_Mask_6Bands_composite_20231011_1725.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_6Bands\\_Composite\\Niihua_Mask_6Bands_composite_20231011_1725.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_6Bands\\_Composite\\Saipan_Extents_NoIsland_6Bands_composite_20231011_1725.tif'
+# rgb nir osi psdbg psdbgR psdbgSt
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_8Bands\\_Composite\\GreatLakes_Mask_NoLand_8Bands_composite_20231011_1752.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_8Bands\\_Composite\\KeyWest_Mask_8Bands_composite_20231011_1752.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_8Bands\\_Composite\\CapeCod_Mask_8Bands_composite_20231011_1752.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_8Bands\\_Composite\\Niihua_Mask_8Bands_composite_20231011_1752.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_8Bands\\_Composite\\Saipan_Extents_NoIsland_8Bands_composite_20231011_1752.tif'
+# rgb nir osi psdbg psdbr
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_7Bands\\_Composite\\GreatLakes_Mask_NoLand_7Bands_composite_20231012_1040.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_7Bands\\_Composite\\KeyWest_Mask_7Bands_composite_20231012_1040.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_7Bands\\_Composite\\CapeCod_Mask_7Bands_composite_20231012_1040.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_7Bands\\_Composite\\Niihua_Mask_7Bands_composite_20231012_1040.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_7Bands\\_Composite\\Saipan_Extents_NoIsland_7Bands_composite_20231012_1040.tif'
+# rgb nir osi psdbg
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_5Bands\\_Composite\\GreatLakes_Mask_NoLand_5Bands_composite_20231012_1053.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_5Bands\\_Composite\\KeyWest_Mask_5Bands_composite_20231012_1053.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_5Bands\\_Composite\\CapeCod_Mask_5Bands_composite_20231012_1053.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_5Bands\\_Composite\\Niihua_Mask_5Bands_composite_20231012_1053.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_5Bands\\_Composite\\Saipan_Extents_NoIsland_5Bands_composite_20231012_1053.tif'
+# rgb nir osi psdbg psdbgR
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_7Bands\\_Composite\\GreatLakes_Mask_NoLand_6Bands_composite_20231012_1213.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_7Bands\\_Composite\\KeyWest_Mask_6Bands_composite_20231012_1213.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_7Bands\\_Composite\\CapeCod_Mask_6Bands_composite_20231012_1213.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_7Bands\\_Composite\\Niihua_Mask_6Bands_composite_20231012_1213.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_7Bands\\_Composite\\Saipan_Extents_NoIsland_6Bands_composite_20231012_1213.tif'
+# rgb nir osi psdbg psdbgSt
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_7Bands\\_Composite\\GreatLakes_Mask_NoLand_6Bands_composite_20231012_1302.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_7Bands\\_Composite\\KeyWest_Mask_6Bands_composite_20231012_1302.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_7Bands\\_Composite\\CapeCod_Mask_6Bands_composite_20231012_1302.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_7Bands\\_Composite\\Niihua_Mask_6Bands_composite_20231012_1302.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_7Bands\\_Composite\\Saipan_Extents_NoIsland_6Bands_composite_20231012_1302.tif'
+# rgb nir osi psdbg psdbgR psdbgSt
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_7Bands\\_Composite\\GreatLakes_Mask_NoLand_7Bands_composite_20231012_1324.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_7Bands\\_Composite\\KeyWest_Mask_7Bands_composite_20231012_1324.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_7Bands\\_Composite\\CapeCod_Mask_7Bands_composite_20231012_1324.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_7Bands\\_Composite\\Niihua_Mask_7Bands_composite_20231012_1324.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_7Bands\\_Composite\\Saipan_Extents_NoIsland_7Bands_composite_20231012_1324.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_8Bands\\_Composite\\GreatLakes_Mask_NoLand_8Bands_composite_20231012_1339.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_8Bands\\_Composite\\KeyWest_Mask_8Bands_composite_20231012_1339.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_8Bands\\_Composite\\CapeCod_Mask_8Bands_composite_20231012_1339.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_8Bands\\_Composite\\Niihua_Mask_8Bands_composite_20231012_1339.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_8Bands\\_Composite\\Saipan_Extents_NoIsland_8Bands_composite_20231012_1339.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20231012_1358.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_9Bands\\_Composite\\KeyWest_Mask_9Bands_composite_20231012_1358.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_9Bands\\_Composite\\CapeCod_Mask_9Bands_composite_20231012_1358.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_9Bands\\_Composite\\Niihua_Mask_9Bands_composite_20231012_1358.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20231012_1358.tif'
+# nir osi psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_7Bands\\_Composite\\GreatLakes_Mask_NoLand_7Bands_composite_20231012_1418.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_7Bands\\_Composite\\KeyWest_Mask_7Bands_composite_20231012_1418.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_7Bands\\_Composite\\CapeCod_Mask_7Bands_composite_20231012_1418.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_7Bands\\_Composite\\Niihua_Mask_7Bands_composite_20231012_1418.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_7Bands\\_Composite\\Saipan_Extents_NoIsland_7Bands_composite_20231012_1418.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20231012_1437.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_9Bands\\_Composite\\KeyWest_Mask_9Bands_composite_20231012_1437.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_9Bands\\_Composite\\CapeCod_Mask_9Bands_composite_20231012_1437.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_9Bands\\_Composite\\Niihua_Mask_9Bands_composite_20231012_1437.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20231012_1437.tif'
+# rgb nir osi psdbg psdbgR psdbgSt psdbr psdbrR
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_10Bands\\_Composite\\GreatLakes_Mask_NoLand_10Bands_composite_20231012_1505.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_10Bands\\_Composite\\KeyWest_Mask_10Bands_composite_20231012_1505.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_10Bands\\_Composite\\CapeCod_Mask_10Bands_composite_20231012_1505.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_10Bands\\_Composite\\Niihua_Mask_10Bands_composite_20231012_1505.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_10Bands\\_Composite\\Saipan_Extents_NoIsland_10Bands_composite_20231012_1505.tif'
+
+# rgb nir osi psdbg psdbgR psdbgS *
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_8Bands\\_Composite\\GreatLakes_Mask_NoLand_8Bands_composite_20231015_1445.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_8Bands\\_Composite\\KeyWest_Mask_8Bands_composite_20231015_1445.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_8Bands\\_Composite\\CapeCod_Mask_8Bands_composite_20231015_1445.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_8Bands\\_Composite\\Niihua_Mask_8Bands_composite_20231015_1445.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_8Bands\\_Composite\\Saipan_Extents_NoIsland_8Bands_composite_20231015_1445.tif'
+# rgb nir osi psdbg psdbr psdbgR psdbgS
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20231015_1509.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_9Bands\\_Composite\\KeyWest_Mask_9Bands_composite_20231015_1509.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_9Bands\\_Composite\\CapeCod_Mask_9Bands_composite_20231015_1509.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_9Bands\\_Composite\\Niihua_Mask_9Bands_composite_20231015_1509.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20231015_1509.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbr psdbrR
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_10Bands\\_Composite\\GreatLakes_Mask_NoLand_10Bands_composite_20231015_1526.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_10Bands\\_Composite\\KeyWest_Mask_10Bands_composite_20231015_1526.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_10Bands\\_Composite\\CapeCod_Mask_10Bands_composite_20231015_1526.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_10Bands\\_Composite\\Niihua_Mask_10Bands_composite_20231015_1526.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_10Bands\\_Composite\\Saipan_Extents_NoIsland_10Bands_composite_20231015_1526.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbrR *
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20231015_1530.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_9Bands\\_Composite\\KeyWest_Mask_9Bands_composite_20231015_1530.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_9Bands\\_Composite\\CapeCod_Mask_9Bands_composite_20231015_1530.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_9Bands\\_Composite\\Niihua_Mask_9Bands_composite_20231015_1530.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20231015_1530.tif'
+# rgb nir osi psdbg psdbgR psdbgS psdbrS
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_9Bands\\_Composite\\GreatLakes_Mask_NoLand_9Bands_composite_20231015_1609.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_9Bands\\_Composite\\KeyWest_Mask_9Bands_composite_20231015_1609.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_9Bands\\_Composite\\CapeCod_Mask_9Bands_composite_20231015_1609.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_9Bands\\_Composite\\Niihua_Mask_9Bands_composite_20231015_1609.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_9Bands\\_Composite\\Saipan_Extents_NoIsland_9Bands_composite_20231015_1609.tif'
+# rgb nir osi psdbg
+# 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\GreatLakes\\_Features_6Bands\\_Composite\\GreatLakes_Mask_NoLand_6Bands_composite_20231015_1625.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\KeyWest\\_Features_6Bands\\_Composite\\KeyWest_Mask_6Bands_composite_20231015_1625.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Mass\\_Features_6Bands\\_Composite\\CapeCod_Mask_6Bands_composite_20231015_1625.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Niihau\\_Features_6Bands\\_Composite\\Niihua_Mask_6Bands_composite_20231015_1625.tif', 'P:\\Thesis\\Test Data\\_Manuscript_Test\\Imagery\\Saipan\\_Features_6Bands\\_Composite\\Saipan_Extents_NoIsland_6Bands_composite_20231015_1625.tif'
+
+r"C:\_Thesis\Data\Testing\CapeCod_Mask_8Bands_composite_20231015_1445.tif",
+r"C:\_Thesis\Data\Testing\GreatLakes_Mask_NoLand_8Bands_composite_20231015_1445.tif",
+r"C:\_Thesis\Data\Testing\KeyWest_Mask_8Bands_composite_20231015_1445.tif",
+r"C:\_Thesis\Data\Testing\Niihua_Mask_8Bands_composite_20231015_1445.tif",
+"C:\_Thesis\Data\Testing\Saipan_Extents_NoIsland_8Bands_composite_20231015_1445.tif",
+
                        ]
     
-    # test_composites = [r"C:\_Thesis\Data\Testing\GreatLakes\_Features_9Bands\_Composite\GreatLakes_Mask_NoLand_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\Niihau\_Features_9Bands\_Composite\Niihua4_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\PuertoReal\_Features_9Bands\_Composite\Puerto_Real_Smaller_9Bands_composite_20230412_0954.tif",
-    #                    r"C:\_Thesis\Data\Testing\Saipan\_Features_9Bands\_Composite\Saipan_Extents_NoIsland_9Bands_composite_20230412_0954.tif"]
-    
-    # test_labels = [ r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\Niihua_Mask_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\PuertoReal_Mask_TF.tif",
-    #                 r"C:\_Thesis\Masks\Test\Saipan_Mask_NoIsland_TF.tif"
-    #                ]
+    test_labels = [ 
+                        r'P:\Thesis\Masks\KeyWest_Mask_TF.tif',
+                        r'P:\Thesis\Masks\CapeCod_Mask_TF.tif',
+                        r"C:\_Thesis\Masks\Test\GreatLakes_Mask_NoLand_TF.tif",
+                        r"P:\Thesis\Test Data\_Manuscript_Test\Masks\Niihua_Mask_TF.tif",
+                        r"C:\_Thesis\Masks\Test\Saipan_Mask_NoIsland_TF.tif",
+                        
+                        # r"P:\Thesis\Masks\_Archive\KeyWest_Mask_Deep_TF.tif",
+                    ]
     
     prediction_options = {'write_prediction': True,
                           'perform_iou': False,
                           'iou_metrics': False,
                           'plot_iou': False,
                           'write_iou': False,
-                          'prob_plot': True
+                          'prob_plot': False,
+                          'morph': True
                           }
     
-    # total model testing results
-    # prediction_list = pair_composite_with_labels(test_composites, test_labels)
-
-    # x_test, x_metadata, x_bounds = shape_multiple_composites(prediction_list)
-    # y_test, y_metadata, y_bounds = shape_multiple_labels(prediction_list)
+    total_accuracy = True
+    # with_mask = False
+    with_mask = True
     
-    # for pkl in test_models:
-    #     model = pickle.load(open(pkl, 'rb'))
-    #     print(f'--Loaded model: {model}')
-    #     assess_accuracy(model, x_test, y_test)
+    results = []
     
-    with_mask = False
-      
     if with_mask:
         prediction_list = pair_composite_with_labels(test_composites, test_labels)
         
@@ -524,21 +551,54 @@ def main():
             log_output('\nN Trees, Leaf, Split, Depth, Precision, Recall, F1-Score, IOU')
             
             im_predicted, X_new, rc = shape_feature_array(u_img)
-        
+            start_iou = 0
+            
             for pkl in test_models:
                 model = pickle.load(open(pkl, 'rb'))
-                print(f'--Loaded model: {model}')
+                print(f'\nLoaded model: {model}')
                 # log_output(f'\n{model.n_estimators},{model.min_samples_leaf},{model.min_samples_split},{model.max_depth}')
                 prediction_time = time.time()
-                img_size = predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
+                img_size, max_iou = predict_img(unseen_img[0], im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=unseen_img[1])
                 model = None
                 
                 performance = round(img_size/(time.time() - prediction_time), -3)
+                
+                if max_iou > start_iou:
+                    start_iou = max_iou
+                    print(f'--**Max IOU: {max_iou:.3f}')
+                    top_model = pkl
+                else:
+                    top_model = 'Not selected'
+                
                 # log_output(f',{performance:.0f}')
                 
                 print(f'--Prediction elapsed time: {(time.time() - prediction_time):.1f} ({img_size/(time.time() - prediction_time):,.0f} pixels per second)')
-            print('------------------------------------------------------------------------\n')
+            print(f'**** Max IOU {max_iou:.3f} with {top_model} ')
+            results.append((os.path.basename(unseen_img[0]).split('_')[0],os.path.basename(top_model),round(max_iou,4)))
+            print('------------------------------------------------------------------------')
             log_output('\n-------------------------------------------------------------------\n')
+    elif total_accuracy:
+        # total model testing results
+        prediction_list = pair_composite_with_labels(test_composites, test_labels)
+
+        x_test, x_metadata, x_bounds = shape_multiple_composites(prediction_list)
+        y_test, y_metadata, y_bounds = shape_multiple_labels(prediction_list)
+        
+        start_iou = 0
+        
+        for pkl in test_models:
+            model = pickle.load(open(pkl, 'rb'))
+            print(f'\n--Loaded model: {model}')
+            iou_score = assess_accuracy(model, x_test, y_test)
+            
+            if iou_score > start_iou:
+                start_iou = iou_score
+                print(f'--**Max IOU: {iou_score:.3f}')
+                top_model = pkl
+            else:
+                top_model = 'Not selected'
+                
+        print(f'**** Max IOU {iou_score:.3f} with {top_model} ')
     else:
         for unseen_img in test_composites:
             u_img, u_metadata, u_bounds = read_image(unseen_img)
@@ -548,13 +608,14 @@ def main():
         
             for pkl in test_models:
                 model = pickle.load(open(pkl, 'rb'))
-                print(f'--Loaded model: {model}')
+                print(f'\n--Loaded model: {model}')
                 prediction_time = time.time()
                 img_size = predict_img(unseen_img, im_predicted, X_new, rc, u_metadata, pkl, model, **prediction_options, test_mask=None)
                 model = None
         
                 print(f'--Prediction elapsed time: {(time.time() - prediction_time):.1f} ({img_size/(time.time() - prediction_time):,.0f} pixels per second)')
             print('------------------------------------------------------------------------\n')
+    print(f'\nFinal results: {results}')
     return None
 
     # predict with all input models and images
