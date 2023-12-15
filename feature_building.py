@@ -443,7 +443,7 @@ def main():
     
     # closer to final
     # train_test = [r'P:\Thesis\Training\_Manuscript_Train\Imagery']
-    train_test = [r'P:\Thesis\Test Data\_Manuscript_Test\Imagery']
+    train_test = [r'P:\Thesis\Test Data\_Turbid_Tests\_RSD']
     
         
     img_dirs = []
@@ -467,7 +467,7 @@ def main():
     
     # closer to final
     # extent_dir = [r'P:\Thesis\Training\_Manuscript_Train\Extents']
-    extent_dir = [r'P:\Thesis\Test Data\_Manuscript_Test\Extents']
+    extent_dir = [r'P:\Thesis\Extents\_Turbid_Tests']
     
 
     maskSHP_dir = []
@@ -493,7 +493,7 @@ def main():
                   'chl_oc3': False,
                   'dogliotti': False,
                   'nechad': False,
-                  'pSDBg_roughness': False,
+                  'pSDBg_roughness': True,
                   'pSDBr_roughness': False,
                   'window_size':7,
                   'etopo': False,
@@ -526,6 +526,7 @@ def main():
                 print('------------------------------------------------------')
             else:
                 print('Did not find any matching geotiff and shapefiles boundaries...')
+    
     print('\n--Features in composite:')
     [print(feature) for feature in features]
     print(f'\nFinal composite list: {final_composite_list}')
